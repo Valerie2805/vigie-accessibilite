@@ -1,0 +1,108 @@
+import { Router } from 'express';
+import { z } from 'zod';
+import { scanWebsite } from '../services/accessibility-scanner.js';
+import { extractContacts } from '../services/contact-extractor.js';
+import { getCompanyBySiren } from '../services/company-search.js';
+import { computeScore, estimateEligibility } from '../services/scoring.js';
+import {
+  getScanById,
+  listScans,
+  saveScan,
+  setCompanyEmail,
+  setCompanyWebsite,
+  upsertCompaniesFromSearch,
+} from '../services/storage.js';
+import { resolveWebsite } from '../services/website-resolver.js';
+
+const router = Router();
+
+router.get('/', (_req, res) => {
+  res.json({
+    success: true,
+    scans: listScans(),
+  });
+});
+
+router.get('/:scanId', (req, res) => {
+  const scan = getScanById(req.params.scanId);
+  if (!scan) {
+    res.status(404).json({
+      success: false,
+      error: 'Analyse introuvable',
+    });
+    return;
+  }
+
+  res.json({
+    success: true,
+    scan,
+  });
+});
+
+router.post('/', async (req, res, next) => {
+  const schema = z.object({
+    siren: z.string().length(9),
+    websiteUrl: z.string().url().optional().or(z.literal('')),
+  });
+
+  try {
+    const body = schema.parse(req.body);
+    const company = await getCompanyBySiren(body.siren);
+    if (!company) {
+      res.status(404).json({
+        success: false,
+        error: 'Entreprise introuvable',
+      });
+      return;
+    }
+
+    const eligibility = estimateEligibility(company);
+    const resolution = await resolveWebsite(company, body.websiteUrl || undefined);
+    upsertCompaniesFromSearch([company]);
+    setCompanyWebsite(company.siren, resolution);
+
+    if (!resolution.websiteUrl) {
+      res.status(400).json({
+        success: false,
+        error: "Aucun site officiel n'a pu etre determine",
+        resolution,
+      });
+      return;
+    }
+
+    const contacts = await extractContacts(resolution.websiteUrl);
+    if (contacts.email) {
+      setCompanyEmail(company.siren, contacts.email, 'site', contacts.notes);
+    }
+
+    const scanResult = await scanWebsite(resolution.websiteUrl);
+    const { score, status } = computeScore(
+      eligibility,
+      scanResult.evidences,
+      Boolean(resolution.websiteUrl),
+    );
+
+    const scan = saveScan({
+      id: crypto.randomUUID(),
+      siren: company.siren,
+      companyName: company.nom,
+      websiteUrl: resolution.websiteUrl,
+      score,
+      status,
+      eligibility,
+      scannedAt: new Date().toISOString(),
+      evidences: scanResult.evidences,
+      notes: [...resolution.notes, ...scanResult.notes],
+    });
+
+    res.status(201).json({
+      success: true,
+      scan,
+      resolution,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+export default router;
