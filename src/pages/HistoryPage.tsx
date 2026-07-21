@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, Clock3, Globe, Mail } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { AppShell } from '@/components/AppShell';
@@ -11,6 +11,14 @@ export default function HistoryPage() {
   const [scans, setScans] = useState<Scan[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
+  const [scanFilter, setScanFilter] = useState<'tous' | 'elements_partiels'>(
+    'tous',
+  );
+
+  const filteredScans = useMemo(() => {
+    if (scanFilter === 'tous') return scans;
+    return scans.filter((scan) => scan.status === 'elements_partiels');
+  }, [scanFilter, scans]);
 
   useEffect(() => {
     async function loadHistory() {
@@ -45,13 +53,39 @@ export default function HistoryPage() {
               Historique des analyses
             </h2>
           </div>
-          <div className="rounded-full border border-white/10 bg-ink-soft px-4 py-2 text-sm text-ivory-muted">
-            {scans.length} analyse{scans.length > 1 ? 's' : ''}
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="rounded-full border border-white/10 bg-ink-soft px-4 py-2 text-sm text-ivory-muted">
+              {filteredScans.length} analyse{filteredScans.length > 1 ? 's' : ''}
+            </span>
+            <div className="flex items-center rounded-full border border-white/10 bg-ink-soft p-1 text-sm">
+              <button
+                type="button"
+                onClick={() => setScanFilter('tous')}
+                className={
+                  scanFilter === 'tous'
+                    ? 'rounded-full bg-white/10 px-4 py-2 text-ivory'
+                    : 'rounded-full px-4 py-2 text-ivory-muted transition hover:text-ivory'
+                }
+              >
+                Tous
+              </button>
+              <button
+                type="button"
+                onClick={() => setScanFilter('elements_partiels')}
+                className={
+                  scanFilter === 'elements_partiels'
+                    ? 'rounded-full bg-copper px-4 py-2 text-ink'
+                    : 'rounded-full px-4 py-2 text-ivory-muted transition hover:text-ivory'
+                }
+              >
+                Partiellement conformes
+              </button>
+            </div>
           </div>
         </div>
 
         <div className="space-y-4">
-          {scans.map((scan) => (
+          {filteredScans.map((scan) => (
             <article
               key={scan.id}
               className="rounded-[24px] border border-white/10 bg-ink-soft p-5"
@@ -92,9 +126,11 @@ export default function HistoryPage() {
             </article>
           ))}
 
-          {!loading && scans.length === 0 ? (
+          {!loading && filteredScans.length === 0 ? (
             <div className="rounded-[24px] border border-dashed border-white/15 bg-ink-soft p-8 text-center text-sm text-ivory-muted">
-              Aucune analyse n'a encore ete enregistree dans ce workspace.
+              {scans.length === 0
+                ? "Aucune analyse n'a encore ete enregistree dans ce workspace."
+                : "Aucune analyse ne correspond au filtre selectionne."}
             </div>
           ) : null}
         </div>
