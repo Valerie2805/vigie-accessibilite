@@ -7,7 +7,7 @@ import { Spinner } from '@/components/Spinner';
 import { StatusBadge } from '@/components/StatusBadge';
 import type { Company, WebsiteResolution } from '@/types';
 import { createScan, getCompany, resolveWebsite } from '@/utils/api';
-import { formatCurrency } from '@/utils/format';
+import { formatCurrency, getEligibilityLabel } from '@/utils/format';
 
 export default function CompanyPage() {
   const { siren = '' } = useParams();
@@ -19,6 +19,13 @@ export default function CompanyPage() {
   const [resolving, setResolving] = useState(false);
   const [launching, setLaunching] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const eligibilityLabel = company?.eligibility
+    ? getEligibilityLabel(company.eligibility)
+    : 'Perimetre inconnu';
+  const resolutionNotes = Array.isArray(resolution?.notes) && resolution?.notes.length
+    ? resolution.notes
+    : ["L'application attend une resolution automatique ou une URL manuelle."];
 
   useEffect(() => {
     async function loadCompany() {
@@ -132,7 +139,7 @@ export default function CompanyPage() {
             />
             <MetricCard
               label="Perimetre"
-              value={company.eligibility.replace(/_/g, ' ')}
+              value={eligibilityLabel}
               hint="Estimation basee sur categorie, activite et CA"
               icon={<Sparkles className="h-4 w-4" />}
             />
@@ -245,9 +252,7 @@ export default function CompanyPage() {
                     Notes
                   </p>
                   <ul className="mt-2 space-y-2 text-sm text-ivory-muted">
-                    {(resolution?.notes ?? [
-                      "L'application attend une resolution automatique ou une URL manuelle.",
-                    ]).map((note) => (
+                    {resolutionNotes.map((note) => (
                       <li key={note}>{note}</li>
                     ))}
                   </ul>

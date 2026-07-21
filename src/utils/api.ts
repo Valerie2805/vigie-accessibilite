@@ -9,9 +9,23 @@ async function request<T>(input: string, init?: RequestInit) {
     ...init,
   });
 
-  const payload = await response.json();
+  const raw = await response.text();
+  let payload: Record<string, unknown> = {};
+
+  try {
+    payload = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+  } catch {
+    if (!response.ok) {
+      throw new Error(`Erreur serveur (${response.status})`);
+    }
+  }
+
   if (!response.ok || payload.success === false) {
-    throw new Error(payload.error ?? 'Une erreur est survenue');
+    const message =
+      typeof payload.error === 'string'
+        ? payload.error
+        : `Une erreur est survenue (${response.status})`;
+    throw new Error(message);
   }
 
   return payload as T;
