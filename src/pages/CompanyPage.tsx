@@ -26,6 +26,12 @@ export default function CompanyPage() {
   const resolutionNotes = Array.isArray(resolution?.notes) && resolution?.notes.length
     ? resolution.notes
     : ["L'application attend une resolution automatique ou une URL manuelle."];
+  const resolvedWebsiteHref = (() => {
+    const url = resolution?.websiteUrl;
+    if (!url) return null;
+    if (/^https?:\/\//i.test(url)) return url;
+    return `https://${url}`;
+  })();
 
   useEffect(() => {
     async function loadCompany() {
@@ -218,9 +224,20 @@ export default function CompanyPage() {
                   <p className="text-xs uppercase tracking-[0.18em] text-ivory-muted">
                     URL detectee
                   </p>
-                  <p className="mt-2 break-all text-base text-ivory">
-                    {resolution?.websiteUrl ?? 'Aucune URL resolue pour le moment'}
-                  </p>
+                  {resolvedWebsiteHref ? (
+                    <a
+                      href={resolvedWebsiteHref}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-2 block break-all text-base text-copper-soft transition hover:text-copper"
+                    >
+                      {resolution?.websiteUrl}
+                    </a>
+                  ) : (
+                    <p className="mt-2 break-all text-base text-ivory">
+                      Aucune URL resolue pour le moment
+                    </p>
+                  )}
                 </div>
 
                   <div className="rounded-2xl border border-white/10 bg-ink-soft p-4">
