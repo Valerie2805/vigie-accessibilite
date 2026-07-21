@@ -9,40 +9,67 @@ type StorageShape = {
 
 const dataDirectory = path.resolve(process.cwd(), 'data');
 const dataFilePath = path.join(dataDirectory, 'scans.json');
+let memoryStorage: StorageShape = {
+  scans: [],
+  companies: [],
+};
 
 function ensureStorageFile() {
-  if (!existsSync(dataDirectory)) {
-    mkdirSync(dataDirectory, { recursive: true });
-  }
+  try {
+    if (!existsSync(dataDirectory)) {
+      mkdirSync(dataDirectory, { recursive: true });
+    }
 
-  if (!existsSync(dataFilePath)) {
-    writeFileSync(dataFilePath, JSON.stringify({ scans: [], companies: [] }, null, 2));
+    if (!existsSync(dataFilePath)) {
+      writeFileSync(dataFilePath, JSON.stringify({ scans: [], companies: [] }, null, 2));
+    }
+
+    return true;
+  } catch {
+    return false;
   }
 }
 
 function readStorage(): StorageShape {
-  ensureStorageFile();
-  const raw = readFileSync(dataFilePath, 'utf-8');
-  const parsed = JSON.parse(raw) as Partial<StorageShape>;
-  return {
-    scans: parsed.scans ?? [],
-    companies: (parsed.companies ?? []).map((company) => ({
-      ...company,
-      websiteUrl: company.websiteUrl ?? null,
-      websiteSource: company.websiteSource ?? 'inconnue',
-      websiteConfidence: company.websiteConfidence ?? 'faible',
-      websiteNotes: company.websiteNotes ?? [],
-      email: company.email ?? null,
-      emailSource: company.emailSource ?? 'inconnue',
-      emailNotes: company.emailNotes ?? [],
-      lastSeenAt: company.lastSeenAt ?? new Date().toISOString(),
-    })),
-  };
+  if (!ensureStorageFile()) {
+    return memoryStorage;
+  }
+
+  try {
+    const raw = readFileSync(dataFilePath, 'utf-8');
+    const parsed = JSON.parse(raw) as Partial<StorageShape>;
+    const normalized: StorageShape = {
+      scans: parsed.scans ?? [],
+      companies: (parsed.companies ?? []).map((company) => ({
+        ...company,
+        websiteUrl: company.websiteUrl ?? null,
+        websiteSource: company.websiteSource ?? 'inconnue',
+        websiteConfidence: company.websiteConfidence ?? 'faible',
+        websiteNotes: company.websiteNotes ?? [],
+        email: company.email ?? null,
+        emailSource: company.emailSource ?? 'inconnue',
+        emailNotes: company.emailNotes ?? [],
+        lastSeenAt: company.lastSeenAt ?? new Date().toISOString(),
+      })),
+    };
+    memoryStorage = normalized;
+    return normalized;
+  } catch {
+    return memoryStorage;
+  }
 }
 
 function writeStorage(payload: StorageShape) {
-  ensureStorageFile();
-  writeFileSync(dataFilePath, JSON.stringify(payload, null, 2));
+  memoryStorage = payload;
+  if (!ensureStorageFile()) {
+    return;
+  }
+
+  try {
+    writeFileSync(dataFilePath, JSON.stringify(payload, null, 2));
+  } catch {
+    // On Vercel serverless, filesystem may be read-only. We keep data in memory for the runtime.
+  }
 }
 
 function toCompanyRecord(company: CompanySearchResult): CompanyRecord {
