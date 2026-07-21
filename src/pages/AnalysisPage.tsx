@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { FileSearch, Globe, Radar, ScrollText } from 'lucide-react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import { AppShell } from '@/components/AppShell';
 import { EvidenceList } from '@/components/EvidenceList';
 import { MetricCard } from '@/components/MetricCard';
@@ -9,14 +9,25 @@ import type { Scan } from '@/types';
 import { getScan } from '@/utils/api';
 import { formatDate } from '@/utils/format';
 
+type AnalysisLocationState = {
+  scan?: Scan;
+};
+
 export default function AnalysisPage() {
   const { scanId = '' } = useParams();
-  const [scan, setScan] = useState<Scan | null>(null);
-  const [loading, setLoading] = useState(true);
+  const location = useLocation();
+  const initialScan = (location.state as AnalysisLocationState | null)?.scan ?? null;
+  const [scan, setScan] = useState<Scan | null>(initialScan);
+  const [loading, setLoading] = useState(!initialScan);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadScan() {
+      if (initialScan) {
+        setLoading(false);
+        return;
+      }
+
       try {
         const response = await getScan(scanId);
         setScan(response.scan);
@@ -32,7 +43,7 @@ export default function AnalysisPage() {
     }
 
     loadScan();
-  }, [scanId]);
+  }, [initialScan, scanId]);
 
   return (
     <AppShell

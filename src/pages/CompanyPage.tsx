@@ -86,7 +86,11 @@ export default function CompanyPage() {
 
     try {
       const response = await createScan(company.siren, manualWebsite || resolution?.websiteUrl || '');
-      navigate(`/analyse/${response.scan.id}`);
+      navigate(`/analyse/${response.scan.id}`, {
+        state: {
+          scan: response.scan,
+        },
+      });
     } catch (requestError) {
       setError(
         requestError instanceof Error
