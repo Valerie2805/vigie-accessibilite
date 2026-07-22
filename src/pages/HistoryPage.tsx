@@ -3,6 +3,10 @@ import { ArrowRight, Clock3, Globe, Mail, Search } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { AppShell } from '@/components/AppShell';
 import { StatusBadge } from '@/components/StatusBadge';
+import {
+  mergeRecentCompanies,
+  readRecentCompaniesFromBrowser,
+} from '@/utils/local-company-history';
 import type { Company, Scan, ScanStatus } from '@/types';
 import { listRecentCompanies, listScans } from '@/utils/api';
 import { formatCurrency, formatDate, getScanStatusLabel } from '@/utils/format';
@@ -84,8 +88,9 @@ export default function HistoryPage() {
           listScans(),
           listRecentCompanies(200),
         ]);
+        const browserCompanies = readRecentCompaniesFromBrowser();
         setScans(scansResponse.scans);
-        setCompanies(companiesResponse.companies);
+        setCompanies(mergeRecentCompanies(companiesResponse.companies, browserCompanies));
       } finally {
         setLoading(false);
       }

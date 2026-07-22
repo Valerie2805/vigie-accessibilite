@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { AppShell } from '@/components/AppShell';
 import { Spinner } from '@/components/Spinner';
 import { StatusBadge } from '@/components/StatusBadge';
+import { saveRecentCompaniesToBrowser } from '@/utils/local-company-history';
 import { resolveWebsite, searchCompanies } from '@/utils/api';
 import { formatCurrency, getEligibilityLabel, getScanStatusLabel } from '@/utils/format';
 import type { Company, EligibilityStatus, ScanStatus } from '@/types';
@@ -55,6 +56,7 @@ export default function Home() {
         maxRevenue ? Number(maxRevenue) : undefined,
       );
       setResults(response.results);
+      saveRecentCompaniesToBrowser(response.results);
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -78,19 +80,24 @@ export default function Home() {
     try {
       for (const company of targets) {
         const response = await resolveWebsite(company.siren, company.websiteUrl ?? undefined);
+        const updatedCompany = {
+          ...company,
+          websiteUrl: response.company.websiteUrl,
+          websiteSource: response.company.websiteSource,
+          websiteConfidence: response.company.websiteConfidence,
+          email: response.company.email,
+          latestScanStatus: response.company.latestScanStatus ?? company.latestScanStatus ?? null,
+          latestScannedAt: response.company.latestScannedAt ?? company.latestScannedAt ?? null,
+        };
+
         setResults((current) =>
           current.map((item) =>
             item.siren === company.siren
-              ? {
-                  ...item,
-                  websiteUrl: response.company.websiteUrl,
-                  websiteSource: response.company.websiteSource,
-                  websiteConfidence: response.company.websiteConfidence,
-                  email: response.company.email,
-                }
+              ? updatedCompany
               : item,
           ),
         );
+        saveRecentCompaniesToBrowser([updatedCompany]);
       }
     } catch (requestError) {
       setError(
