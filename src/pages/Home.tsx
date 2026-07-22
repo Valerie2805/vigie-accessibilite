@@ -5,10 +5,11 @@ import { AppShell } from '@/components/AppShell';
 import { Spinner } from '@/components/Spinner';
 import { StatusBadge } from '@/components/StatusBadge';
 import { resolveWebsite, searchCompanies } from '@/utils/api';
-import { formatCurrency, getEligibilityLabel } from '@/utils/format';
-import type { Company, EligibilityStatus } from '@/types';
+import { formatCurrency, getEligibilityLabel, getScanStatusLabel } from '@/utils/format';
+import type { Company, EligibilityStatus, ScanStatus } from '@/types';
 
 type EligibilityFilter = 'tous' | EligibilityStatus;
+type AccessibilityFilter = 'tous' | 'sans_analyse' | ScanStatus;
 
 export default function Home() {
   const [query, setQuery] = useState('');
@@ -18,18 +19,27 @@ export default function Home() {
   const [minRevenue, setMinRevenue] = useState('');
   const [maxRevenue, setMaxRevenue] = useState('');
   const [eligibilityFilter, setEligibilityFilter] = useState<EligibilityFilter>('tous');
+  const [accessibilityFilter, setAccessibilityFilter] =
+    useState<AccessibilityFilter>('tous');
   const [results, setResults] = useState<Company[]>([]);
   const [loading, setLoading] = useState(false);
   const [enriching, setEnriching] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const filteredResults = useMemo(() => {
-    if (eligibilityFilter === 'tous') {
-      return results;
-    }
+    return results.filter((company) => {
+      const matchesEligibility =
+        eligibilityFilter === 'tous' || company.eligibility === eligibilityFilter;
 
-    return results.filter((company) => company.eligibility === eligibilityFilter);
-  }, [eligibilityFilter, results]);
+      const matchesAccessibility =
+        accessibilityFilter === 'tous' ||
+        (accessibilityFilter === 'sans_analyse'
+          ? !company.latestScanStatus
+          : company.latestScanStatus === accessibilityFilter);
+
+      return matchesEligibility && matchesAccessibility;
+    });
+  }, [accessibilityFilter, eligibilityFilter, results]);
 
   async function handleSearch(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -302,6 +312,41 @@ export default function Home() {
                 </option>
               </select>
             </label>
+            <label className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-ivory-muted">
+              <span>Accessibilite</span>
+              <select
+                value={accessibilityFilter}
+                onChange={(event) =>
+                  setAccessibilityFilter(event.target.value as AccessibilityFilter)
+                }
+                className="bg-transparent text-sm text-ivory outline-none"
+              >
+                <option value="tous" className="bg-ink text-ivory">
+                  Tous
+                </option>
+                <option value="elements_detectes" className="bg-ink text-ivory">
+                  {getScanStatusLabel('elements_detectes')}
+                </option>
+                <option value="elements_partiels" className="bg-ink text-ivory">
+                  {getScanStatusLabel('elements_partiels')}
+                </option>
+                <option
+                  value="conformite_non_demontree"
+                  className="bg-ink text-ivory"
+                >
+                  {getScanStatusLabel('conformite_non_demontree')}
+                </option>
+                <option
+                  value="a_verifier_manuellement"
+                  className="bg-ink text-ivory"
+                >
+                  {getScanStatusLabel('a_verifier_manuellement')}
+                </option>
+                <option value="sans_analyse" className="bg-ink text-ivory">
+                  Sans analyse
+                </option>
+              </select>
+            </label>
             <button
               type="button"
               onClick={handleEnrichWebsites}
@@ -329,6 +374,9 @@ export default function Home() {
                   <div className="flex flex-wrap items-center gap-3">
                     <h3 className="font-display text-2xl text-ivory">{company.nom}</h3>
                     <StatusBadge status={company.eligibility} type="eligibility" />
+                    {company.latestScanStatus ? (
+                      <StatusBadge status={company.latestScanStatus} type="scan" />
+                    ) : null}
                   </div>
                   <p className="text-sm text-ivory-muted">
                     {company.adresse ?? 'Adresse non disponible'}
@@ -406,7 +454,7 @@ export default function Home() {
             <div className="rounded-[28px] border border-dashed border-white/15 bg-white/5 p-8 text-center text-sm text-ivory-muted">
               {results.length === 0
                 ? "Aucun resultat avec ces filtres. Essaie un metier plus large, une autre ville, ou retire les bornes de chiffre d'affaires."
-                : "Aucun resultat ne correspond au statut selectionne. Essaie un autre filtre de perimetre."}
+                : "Aucun resultat ne correspond aux filtres selectionnes. Essaie un autre statut ou un autre filtre accessibilite."}
             </div>
           ) : null}
         </div>

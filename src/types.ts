@@ -26,6 +26,8 @@ export type Company = {
   email: string | null;
   lastSeenAt?: string;
   eligibility: EligibilityStatus;
+  latestScanStatus?: ScanStatus | null;
+  latestScannedAt?: string | null;
 };
 
 export type WebsiteResolution = {

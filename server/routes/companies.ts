@@ -6,6 +6,7 @@ import { estimateEligibility } from '../services/scoring.js';
 import {
   getCompanyFromStorage,
   listCompanies,
+  listScans,
   setCompanyEmail,
   setCompanyWebsite,
   upsertCompaniesFromSearch,
@@ -13,6 +14,22 @@ import {
 import { resolveWebsite } from '../services/website-resolver.js';
 
 const router = Router();
+
+function getLatestScanIndex() {
+  const bySiren = new Map<string, { status: string; scannedAt: string }>();
+
+  for (const scan of listScans()) {
+    const existing = bySiren.get(scan.siren);
+    if (!existing || existing.scannedAt < scan.scannedAt) {
+      bySiren.set(scan.siren, {
+        status: scan.status,
+        scannedAt: scan.scannedAt,
+      });
+    }
+  }
+
+  return bySiren;
+}
 
 router.get('/search', async (req, res, next) => {
   const schema = z.object({
@@ -43,6 +60,7 @@ router.get('/search', async (req, res, next) => {
 
     const storedCompanies = upsertCompaniesFromSearch(results);
     const storedIndex = new Map(storedCompanies.map((company) => [company.siren, company]));
+    const latestScanIndex = getLatestScanIndex();
 
     res.json({
       success: true,
@@ -53,6 +71,8 @@ router.get('/search', async (req, res, next) => {
         websiteConfidence: storedIndex.get(company.siren)?.websiteConfidence ?? 'faible',
         email: storedIndex.get(company.siren)?.email ?? null,
         eligibility: estimateEligibility(company),
+        latestScanStatus: latestScanIndex.get(company.siren)?.status ?? null,
+        latestScannedAt: latestScanIndex.get(company.siren)?.scannedAt ?? null,
       })),
     });
   } catch (error) {
@@ -68,11 +88,14 @@ router.get('/recent', (req, res, next) => {
   try {
     const params = schema.parse(req.query);
     const companies = listCompanies(params.limit ?? 50);
+    const latestScanIndex = getLatestScanIndex();
     res.json({
       success: true,
       companies: companies.map((company) => ({
         ...company,
         eligibility: estimateEligibility(company),
+        latestScanStatus: latestScanIndex.get(company.siren)?.status ?? null,
+        latestScannedAt: latestScanIndex.get(company.siren)?.scannedAt ?? null,
       })),
     });
   } catch (error) {
@@ -93,6 +116,7 @@ router.get('/:siren', async (req, res, next) => {
 
     upsertCompaniesFromSearch([company]);
     const stored = getCompanyFromStorage(company.siren);
+    const latestScanIndex = getLatestScanIndex();
 
     res.json({
       success: true,
@@ -103,6 +127,8 @@ router.get('/:siren', async (req, res, next) => {
         websiteConfidence: stored?.websiteConfidence ?? 'faible',
         email: stored?.email ?? null,
         eligibility: estimateEligibility(company),
+        latestScanStatus: latestScanIndex.get(company.siren)?.status ?? null,
+        latestScannedAt: latestScanIndex.get(company.siren)?.scannedAt ?? null,
       },
     });
   } catch (error) {
@@ -143,6 +169,7 @@ router.post('/resolve-website', async (req, res, next) => {
     }
 
     const storedAfter = getCompanyFromStorage(company.siren);
+    const latestScanIndex = getLatestScanIndex();
 
     res.json({
       success: true,
@@ -153,6 +180,8 @@ router.post('/resolve-website', async (req, res, next) => {
         websiteConfidence: resolution.confidence,
         email: storedAfter?.email ?? null,
         eligibility: estimateEligibility(company),
+        latestScanStatus: latestScanIndex.get(company.siren)?.status ?? null,
+        latestScannedAt: latestScanIndex.get(company.siren)?.scannedAt ?? null,
       },
       resolution,
     });
