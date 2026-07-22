@@ -1,23 +1,35 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ArrowRight, Globe, Mail, Radar, Search } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { AppShell } from '@/components/AppShell';
 import { Spinner } from '@/components/Spinner';
 import { StatusBadge } from '@/components/StatusBadge';
 import { resolveWebsite, searchCompanies } from '@/utils/api';
-import { formatCurrency } from '@/utils/format';
-import type { Company } from '@/types';
+import { formatCurrency, getEligibilityLabel } from '@/utils/format';
+import type { Company, EligibilityStatus } from '@/types';
+
+type EligibilityFilter = 'tous' | EligibilityStatus;
 
 export default function Home() {
   const [query, setQuery] = useState('');
   const [city, setCity] = useState('');
+  const [searchScope, setSearchScope] = useState<'france' | 'city'>('france');
   const [metier, setMetier] = useState('');
   const [minRevenue, setMinRevenue] = useState('');
   const [maxRevenue, setMaxRevenue] = useState('');
+  const [eligibilityFilter, setEligibilityFilter] = useState<EligibilityFilter>('tous');
   const [results, setResults] = useState<Company[]>([]);
   const [loading, setLoading] = useState(false);
   const [enriching, setEnriching] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const filteredResults = useMemo(() => {
+    if (eligibilityFilter === 'tous') {
+      return results;
+    }
+
+    return results.filter((company) => company.eligibility === eligibilityFilter);
+  }, [eligibilityFilter, results]);
 
   async function handleSearch(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -27,7 +39,7 @@ export default function Home() {
     try {
       const response = await searchCompanies(
         query,
-        city,
+        searchScope === 'city' ? city : undefined,
         metier,
         minRevenue ? Number(minRevenue) : undefined,
         maxRevenue ? Number(maxRevenue) : undefined,
@@ -119,17 +131,56 @@ export default function Home() {
               />
             </label>
 
-            <label className="space-y-2">
+            <div className="space-y-2">
               <span className="text-xs uppercase tracking-[0.2em] text-ivory-muted">
-                Ville optionnelle
+                Zone de recherche
               </span>
-              <input
-                value={city}
-                onChange={(event) => setCity(event.target.value)}
-                className="h-14 w-full rounded-2xl border border-white/10 bg-ink-soft px-4 text-sm text-ivory outline-none transition focus:border-copper/50"
-                placeholder="Paris"
-              />
-            </label>
+              <div className="flex items-center rounded-2xl border border-white/10 bg-ink-soft p-1 text-sm">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchScope('france');
+                    setCity('');
+                  }}
+                  className={
+                    searchScope === 'france'
+                      ? 'flex-1 rounded-xl bg-copper px-4 py-3 font-medium text-ink'
+                      : 'flex-1 rounded-xl px-4 py-3 text-ivory-muted transition hover:text-ivory'
+                  }
+                >
+                  Toute la France
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSearchScope('city')}
+                  className={
+                    searchScope === 'city'
+                      ? 'flex-1 rounded-xl bg-white/10 px-4 py-3 font-medium text-ivory'
+                      : 'flex-1 rounded-xl px-4 py-3 text-ivory-muted transition hover:text-ivory'
+                  }
+                >
+                  Une ville
+                </button>
+              </div>
+            </div>
+
+            {searchScope === 'city' ? (
+              <label className="space-y-2">
+                <span className="text-xs uppercase tracking-[0.2em] text-ivory-muted">
+                  Ville
+                </span>
+                <input
+                  value={city}
+                  onChange={(event) => setCity(event.target.value)}
+                  className="h-14 w-full rounded-2xl border border-white/10 bg-ink-soft px-4 text-sm text-ivory outline-none transition focus:border-copper/50"
+                  placeholder="Paris"
+                />
+              </label>
+            ) : (
+              <div className="rounded-2xl border border-dashed border-white/10 bg-ink-soft px-4 py-4 text-sm text-ivory-muted">
+                La recherche se fera sur toute la France.
+              </div>
+            )}
 
             <label className="space-y-2">
               <span className="text-xs uppercase tracking-[0.2em] text-ivory-muted">
@@ -191,8 +242,8 @@ export default function Home() {
               Lancer la recherche
             </button>
             <p className="text-sm text-ivory-muted">
-              Recherche textuelle sur l'API publique, puis filtrage local par ville,
-              metier et chiffre d'affaires quand ces donnees existent.
+              Recherche sur toute la France par defaut, puis filtrage optionnel par
+              ville, metier et chiffre d'affaires quand ces donnees existent.
             </p>
           </div>
 
@@ -228,8 +279,29 @@ export default function Home() {
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <span className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-ivory-muted">
-              {results.length} resultat{results.length > 1 ? 's' : ''}
+              {filteredResults.length} resultat{filteredResults.length > 1 ? 's' : ''}
             </span>
+            <label className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-ivory-muted">
+              <span>Statut</span>
+              <select
+                value={eligibilityFilter}
+                onChange={(event) => setEligibilityFilter(event.target.value as EligibilityFilter)}
+                className="bg-transparent text-sm text-ivory outline-none"
+              >
+                <option value="tous" className="bg-ink text-ivory">
+                  Tous
+                </option>
+                <option value="soumis_probable" className="bg-ink text-ivory">
+                  {getEligibilityLabel('soumis_probable')}
+                </option>
+                <option value="hors_perimetre_probable" className="bg-ink text-ivory">
+                  {getEligibilityLabel('hors_perimetre_probable')}
+                </option>
+                <option value="incertain" className="bg-ink text-ivory">
+                  {getEligibilityLabel('incertain')}
+                </option>
+              </select>
+            </label>
             <button
               type="button"
               onClick={handleEnrichWebsites}
@@ -247,7 +319,7 @@ export default function Home() {
         </div>
 
         <div className="grid gap-4">
-          {results.map((company) => (
+          {filteredResults.map((company) => (
             <article
               key={company.siren}
               className="rounded-[28px] border border-white/10 bg-white/5 p-5 shadow-panel"
@@ -330,10 +402,11 @@ export default function Home() {
             </article>
           ))}
 
-          {!loading && results.length === 0 ? (
+          {!loading && filteredResults.length === 0 ? (
             <div className="rounded-[28px] border border-dashed border-white/15 bg-white/5 p-8 text-center text-sm text-ivory-muted">
-              Aucun resultat avec ces filtres. Essaie un metier plus large, une autre
-              ville, ou retire les bornes de chiffre d'affaires.
+              {results.length === 0
+                ? "Aucun resultat avec ces filtres. Essaie un metier plus large, une autre ville, ou retire les bornes de chiffre d'affaires."
+                : "Aucun resultat ne correspond au statut selectionne. Essaie un autre filtre de perimetre."}
             </div>
           ) : null}
         </div>
