@@ -132,15 +132,17 @@ export default function HistoryPage() {
     loadHistory();
   }, []);
 
-  async function ensureWebsitesForCompanies(targetCompanies: Company[]) {
-    const companiesWithoutWebsite = targetCompanies.filter((company) => !company.websiteUrl);
-    if (companiesWithoutWebsite.length === 0) {
+  async function ensureExportDataForCompanies(targetCompanies: Company[]) {
+    const companiesToComplete = targetCompanies.filter(
+      (company) => !company.websiteUrl || !company.email,
+    );
+    if (companiesToComplete.length === 0) {
       return targetCompanies;
     }
 
     const updatedBySiren = new Map<string, Company>();
 
-    for (const company of companiesWithoutWebsite) {
+    for (const company of companiesToComplete) {
       const response = await resolveWebsite(company.siren, company.websiteUrl ?? undefined);
       const updatedCompany = {
         ...company,
@@ -195,7 +197,7 @@ export default function HistoryPage() {
     setExporting(true);
 
     try {
-      const enriched = await ensureWebsitesForCompanies(selectedCompanies);
+      const enriched = await ensureExportDataForCompanies(selectedCompanies);
       exportCompaniesToCsv(enriched);
     } finally {
       setExporting(false);
@@ -207,7 +209,7 @@ export default function HistoryPage() {
     setExporting(true);
 
     try {
-      const enriched = await ensureWebsitesForCompanies(selectedCompanies);
+      const enriched = await ensureExportDataForCompanies(selectedCompanies);
       exportCompaniesToExcel(enriched);
     } finally {
       setExporting(false);

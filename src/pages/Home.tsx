@@ -122,8 +122,8 @@ export default function Home() {
     }
   }
 
-  async function ensureWebsitesForCompanies(companies: Company[]) {
-    const targets = companies.filter((company) => !company.websiteUrl);
+  async function ensureExportDataForCompanies(companies: Company[]) {
+    const targets = companies.filter((company) => !company.websiteUrl || !company.email);
     if (targets.length === 0) {
       return companies;
     }
@@ -161,7 +161,7 @@ export default function Home() {
     setError(null);
 
     try {
-      const enriched = await ensureWebsitesForCompanies(selectedResults);
+      const enriched = await ensureExportDataForCompanies(selectedResults);
       exportCompaniesToCsv(enriched);
     } catch (requestError) {
       setError(
@@ -178,7 +178,7 @@ export default function Home() {
     setError(null);
 
     try {
-      const enriched = await ensureWebsitesForCompanies(selectedResults);
+      const enriched = await ensureExportDataForCompanies(selectedResults);
       exportCompaniesToExcel(enriched);
     } catch (requestError) {
       setError(
