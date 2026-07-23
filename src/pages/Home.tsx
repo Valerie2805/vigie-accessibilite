@@ -4,6 +4,10 @@ import { Link } from 'react-router-dom';
 import { AppShell } from '@/components/AppShell';
 import { Spinner } from '@/components/Spinner';
 import { StatusBadge } from '@/components/StatusBadge';
+import {
+  exportCompaniesToCsv,
+  exportCompaniesToExcel,
+} from '@/utils/export-companies';
 import { saveRecentCompaniesToBrowser } from '@/utils/local-company-history';
 import { resolveWebsite, searchCompanies } from '@/utils/api';
 import { formatCurrency, getEligibilityLabel, getScanStatusLabel } from '@/utils/format';
@@ -23,6 +27,7 @@ export default function Home() {
   const [accessibilityFilter, setAccessibilityFilter] =
     useState<AccessibilityFilter>('tous');
   const [results, setResults] = useState<Company[]>([]);
+  const [selectedSirens, setSelectedSirens] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [enriching, setEnriching] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -42,6 +47,11 @@ export default function Home() {
     });
   }, [accessibilityFilter, eligibilityFilter, results]);
 
+  const selectedResults = useMemo(
+    () => filteredResults.filter((company) => selectedSirens.includes(company.siren)),
+    [filteredResults, selectedSirens],
+  );
+
   async function handleSearch(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setLoading(true);
@@ -56,6 +66,7 @@ export default function Home() {
         maxRevenue ? Number(maxRevenue) : undefined,
       );
       setResults(response.results);
+      setSelectedSirens([]);
       saveRecentCompaniesToBrowser(response.results);
     } catch (requestError) {
       setError(
@@ -108,6 +119,29 @@ export default function Home() {
     } finally {
       setEnriching(false);
     }
+  }
+
+  function toggleCompanySelection(siren: string) {
+    setSelectedSirens((current) =>
+      current.includes(siren)
+        ? current.filter((item) => item !== siren)
+        : [...current, siren],
+    );
+  }
+
+  function handleSelectAllFiltered() {
+    const filteredSirens = filteredResults.map((company) => company.siren);
+    const allFilteredSelected =
+      filteredSirens.length > 0 &&
+      filteredSirens.every((siren) => selectedSirens.includes(siren));
+
+    setSelectedSirens((current) => {
+      if (allFilteredSelected) {
+        return current.filter((siren) => !filteredSirens.includes(siren));
+      }
+
+      return Array.from(new Set([...current, ...filteredSirens]));
+    });
   }
 
   return (
@@ -298,6 +332,9 @@ export default function Home() {
             <span className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-ivory-muted">
               {filteredResults.length} resultat{filteredResults.length > 1 ? 's' : ''}
             </span>
+            <span className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-ivory-muted">
+              {selectedResults.length} selectionne{selectedResults.length > 1 ? 's' : ''}
+            </span>
             <label className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-ivory-muted">
               <span>Statut</span>
               <select
@@ -356,6 +393,30 @@ export default function Home() {
             </label>
             <button
               type="button"
+              onClick={handleSelectAllFiltered}
+              disabled={filteredResults.length === 0}
+              className="inline-flex h-10 items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 text-sm text-ivory transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Tout selectionner
+            </button>
+            <button
+              type="button"
+              onClick={() => exportCompaniesToCsv(selectedResults)}
+              disabled={selectedResults.length === 0}
+              className="inline-flex h-10 items-center gap-2 rounded-full border border-copper/40 bg-copper/10 px-4 text-sm text-copper-soft transition hover:border-copper hover:bg-copper hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Exporter CSV
+            </button>
+            <button
+              type="button"
+              onClick={() => exportCompaniesToExcel(selectedResults)}
+              disabled={selectedResults.length === 0}
+              className="inline-flex h-10 items-center gap-2 rounded-full border border-copper/40 bg-copper/10 px-4 text-sm text-copper-soft transition hover:border-copper hover:bg-copper hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Exporter Excel
+            </button>
+            <button
+              type="button"
               onClick={handleEnrichWebsites}
               disabled={
                 enriching ||
@@ -376,6 +437,15 @@ export default function Home() {
               key={company.siren}
               className="rounded-[28px] border border-white/10 bg-white/5 p-5 shadow-panel"
             >
+              <label className="mb-4 inline-flex items-center gap-3 text-sm text-ivory-muted">
+                <input
+                  type="checkbox"
+                  checked={selectedSirens.includes(company.siren)}
+                  onChange={() => toggleCompanySelection(company.siren)}
+                  className="h-4 w-4 rounded border border-white/20 bg-ink-soft accent-copper"
+                />
+                Selectionner pour export
+              </label>
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div className="space-y-3">
                   <div className="flex flex-wrap items-center gap-3">
