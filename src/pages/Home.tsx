@@ -30,6 +30,7 @@ export default function Home() {
   const [selectedSirens, setSelectedSirens] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [enriching, setEnriching] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const filteredResults = useMemo(() => {
@@ -118,6 +119,73 @@ export default function Home() {
       );
     } finally {
       setEnriching(false);
+    }
+  }
+
+  async function ensureWebsitesForCompanies(companies: Company[]) {
+    const targets = companies.filter((company) => !company.websiteUrl);
+    if (targets.length === 0) {
+      return companies;
+    }
+
+    const updatedBySiren = new Map<string, Company>();
+
+    for (const company of targets) {
+      const response = await resolveWebsite(company.siren, company.websiteUrl ?? undefined);
+      const updatedCompany = {
+        ...company,
+        websiteUrl: response.company.websiteUrl,
+        websiteSource: response.company.websiteSource,
+        websiteConfidence: response.company.websiteConfidence,
+        email: response.company.email,
+        latestScanStatus: response.company.latestScanStatus ?? company.latestScanStatus ?? null,
+        latestScannedAt: response.company.latestScannedAt ?? company.latestScannedAt ?? null,
+      };
+
+      updatedBySiren.set(company.siren, updatedCompany);
+
+      setResults((current) =>
+        current.map((item) =>
+          item.siren === company.siren ? updatedCompany : item,
+        ),
+      );
+      saveRecentCompaniesToBrowser([updatedCompany]);
+    }
+
+    return companies.map((company) => updatedBySiren.get(company.siren) ?? company);
+  }
+
+  async function handleExportCsv() {
+    if (selectedResults.length === 0 || exporting) return;
+    setExporting(true);
+    setError(null);
+
+    try {
+      const enriched = await ensureWebsitesForCompanies(selectedResults);
+      exportCompaniesToCsv(enriched);
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error ? requestError.message : "Impossible d'exporter.",
+      );
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function handleExportExcel() {
+    if (selectedResults.length === 0 || exporting) return;
+    setExporting(true);
+    setError(null);
+
+    try {
+      const enriched = await ensureWebsitesForCompanies(selectedResults);
+      exportCompaniesToExcel(enriched);
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error ? requestError.message : "Impossible d'exporter.",
+      );
+    } finally {
+      setExporting(false);
     }
   }
 
@@ -401,16 +469,16 @@ export default function Home() {
             </button>
             <button
               type="button"
-              onClick={() => exportCompaniesToCsv(selectedResults)}
-              disabled={selectedResults.length === 0}
+              onClick={handleExportCsv}
+              disabled={selectedResults.length === 0 || exporting}
               className="inline-flex h-10 items-center gap-2 rounded-full border border-copper/40 bg-copper/10 px-4 text-sm text-copper-soft transition hover:border-copper hover:bg-copper hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
             >
               Exporter CSV
             </button>
             <button
               type="button"
-              onClick={() => exportCompaniesToExcel(selectedResults)}
-              disabled={selectedResults.length === 0}
+              onClick={handleExportExcel}
+              disabled={selectedResults.length === 0 || exporting}
               className="inline-flex h-10 items-center gap-2 rounded-full border border-copper/40 bg-copper/10 px-4 text-sm text-copper-soft transition hover:border-copper hover:bg-copper hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
             >
               Exporter Excel
@@ -422,6 +490,7 @@ export default function Home() {
                 enriching ||
                 results.length === 0 ||
                 results.every((company) => company.websiteUrl && company.email)
+                || exporting
               }
               className="inline-flex h-10 items-center gap-2 rounded-full border border-moss/40 bg-moss/10 px-4 text-sm text-moss transition hover:border-moss hover:bg-moss hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
             >
