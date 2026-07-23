@@ -19,7 +19,7 @@ function getRows(companies: Company[]): ExportRow[] {
     Statut: getEligibilityLabel(company.eligibility),
     Accessibilite: company.latestScanStatus ? getScanStatusLabel(company.latestScanStatus) : '',
     'Date dernier scan': sanitizeCell(company.latestScannedAt),
-    Site: sanitizeCell(company.websiteUrl),
+    'Site internet': sanitizeCell(company.websiteUrl),
     Email: sanitizeCell(company.email),
   }));
 }

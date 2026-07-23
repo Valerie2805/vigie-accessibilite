@@ -4,15 +4,26 @@ import { Link } from 'react-router-dom';
 import { AppShell } from '@/components/AppShell';
 import { StatusBadge } from '@/components/StatusBadge';
 import {
+  exportCompaniesToCsv,
+  exportCompaniesToExcel,
+} from '@/utils/export-companies';
+import {
   mergeRecentCompanies,
   readRecentCompaniesFromBrowser,
+  saveRecentCompaniesToBrowser,
 } from '@/utils/local-company-history';
-import type { Company, Scan, ScanStatus } from '@/types';
-import { listRecentCompanies, listScans } from '@/utils/api';
-import { formatCurrency, formatDate, getScanStatusLabel } from '@/utils/format';
+import type { Company, EligibilityStatus, Scan, ScanStatus } from '@/types';
+import { listRecentCompanies, listScans, resolveWebsite } from '@/utils/api';
+import {
+  formatCurrency,
+  formatDate,
+  getEligibilityLabel,
+  getScanStatusLabel,
+} from '@/utils/format';
 
 type ScanFilter = 'tous' | ScanStatus;
 type CompanyAccessibilityFilter = 'tous' | 'sans_analyse' | ScanStatus;
+type CompanyEligibilityFilter = 'tous' | EligibilityStatus;
 
 function normalizeText(value: string | null | undefined) {
   return (value ?? '')
@@ -25,11 +36,15 @@ function normalizeText(value: string | null | undefined) {
 export default function HistoryPage() {
   const [scans, setScans] = useState<Scan[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
+  const [selectedCompanySirens, setSelectedCompanySirens] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
   const [historyQuery, setHistoryQuery] = useState('');
   const [scanFilter, setScanFilter] = useState<ScanFilter>('tous');
   const [companyAccessibilityFilter, setCompanyAccessibilityFilter] =
     useState<CompanyAccessibilityFilter>('tous');
+  const [companyEligibilityFilter, setCompanyEligibilityFilter] =
+    useState<CompanyEligibilityFilter>('tous');
 
   const latestScanBySiren = useMemo(() => {
     const entries = scans
@@ -66,6 +81,9 @@ export default function HistoryPage() {
 
     return companies.filter((company) => {
       const latestScan = latestScanBySiren.get(company.siren);
+      const matchesEligibilityFilter =
+        companyEligibilityFilter === 'tous' ||
+        company.eligibility === companyEligibilityFilter;
       const matchesAccessibilityFilter =
         companyAccessibilityFilter === 'tous' ||
         (companyAccessibilityFilter === 'sans_analyse'
@@ -77,9 +95,23 @@ export default function HistoryPage() {
       );
 
       const matchesQuery = !normalizedQuery || haystack.includes(normalizedQuery);
-      return matchesAccessibilityFilter && matchesQuery;
+      return matchesEligibilityFilter && matchesAccessibilityFilter && matchesQuery;
     });
-  }, [companies, companyAccessibilityFilter, historyQuery, latestScanBySiren]);
+  }, [
+    companies,
+    companyAccessibilityFilter,
+    companyEligibilityFilter,
+    historyQuery,
+    latestScanBySiren,
+  ]);
+
+  const selectedCompanies = useMemo(
+    () =>
+      filteredCompanies.filter((company) =>
+        selectedCompanySirens.includes(company.siren),
+      ),
+    [filteredCompanies, selectedCompanySirens],
+  );
 
   useEffect(() => {
     async function loadHistory() {
@@ -91,6 +123,7 @@ export default function HistoryPage() {
         const browserCompanies = readRecentCompaniesFromBrowser();
         setScans(scansResponse.scans);
         setCompanies(mergeRecentCompanies(companiesResponse.companies, browserCompanies));
+        setSelectedCompanySirens([]);
       } finally {
         setLoading(false);
       }
@@ -98,6 +131,88 @@ export default function HistoryPage() {
 
     loadHistory();
   }, []);
+
+  async function ensureWebsitesForCompanies(targetCompanies: Company[]) {
+    const companiesWithoutWebsite = targetCompanies.filter((company) => !company.websiteUrl);
+    if (companiesWithoutWebsite.length === 0) {
+      return targetCompanies;
+    }
+
+    const updatedBySiren = new Map<string, Company>();
+
+    for (const company of companiesWithoutWebsite) {
+      const response = await resolveWebsite(company.siren, company.websiteUrl ?? undefined);
+      const updatedCompany = {
+        ...company,
+        websiteUrl: response.company.websiteUrl,
+        websiteSource: response.company.websiteSource,
+        websiteConfidence: response.company.websiteConfidence,
+        email: response.company.email,
+        latestScanStatus: response.company.latestScanStatus ?? company.latestScanStatus ?? null,
+        latestScannedAt: response.company.latestScannedAt ?? company.latestScannedAt ?? null,
+      };
+
+      updatedBySiren.set(company.siren, updatedCompany);
+
+      setCompanies((current) =>
+        current.map((item) =>
+          item.siren === company.siren ? updatedCompany : item,
+        ),
+      );
+      saveRecentCompaniesToBrowser([updatedCompany]);
+    }
+
+    return targetCompanies.map(
+      (company) => updatedBySiren.get(company.siren) ?? company,
+    );
+  }
+
+  function toggleCompanySelection(siren: string) {
+    setSelectedCompanySirens((current) =>
+      current.includes(siren)
+        ? current.filter((item) => item !== siren)
+        : [...current, siren],
+    );
+  }
+
+  function handleSelectAllFilteredCompanies() {
+    const filteredSirens = filteredCompanies.map((company) => company.siren);
+    const allFilteredSelected =
+      filteredSirens.length > 0 &&
+      filteredSirens.every((siren) => selectedCompanySirens.includes(siren));
+
+    setSelectedCompanySirens((current) => {
+      if (allFilteredSelected) {
+        return current.filter((siren) => !filteredSirens.includes(siren));
+      }
+
+      return Array.from(new Set([...current, ...filteredSirens]));
+    });
+  }
+
+  async function handleExportCsv() {
+    if (selectedCompanies.length === 0 || exporting) return;
+    setExporting(true);
+
+    try {
+      const enriched = await ensureWebsitesForCompanies(selectedCompanies);
+      exportCompaniesToCsv(enriched);
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function handleExportExcel() {
+    if (selectedCompanies.length === 0 || exporting) return;
+    setExporting(true);
+
+    try {
+      const enriched = await ensureWebsitesForCompanies(selectedCompanies);
+      exportCompaniesToExcel(enriched);
+    } finally {
+      setExporting(false);
+    }
+  }
 
   return (
     <AppShell
@@ -228,6 +343,58 @@ export default function HistoryPage() {
             <span className="rounded-full border border-white/10 bg-ink-soft px-4 py-2 text-sm text-ivory-muted">
               {filteredCompanies.length} entreprise{filteredCompanies.length > 1 ? 's' : ''}
             </span>
+            <span className="rounded-full border border-white/10 bg-ink-soft px-4 py-2 text-sm text-ivory-muted">
+              {selectedCompanies.length} selectionne{selectedCompanies.length > 1 ? 's' : ''}
+            </span>
+            <label className="flex items-center gap-2 rounded-full border border-white/10 bg-ink-soft px-4 py-2 text-sm text-ivory-muted">
+              <span>Statut</span>
+              <select
+                value={companyEligibilityFilter}
+                onChange={(event) =>
+                  setCompanyEligibilityFilter(
+                    event.target.value as CompanyEligibilityFilter,
+                  )
+                }
+                className="bg-transparent text-sm text-ivory outline-none"
+              >
+                <option value="tous" className="bg-ink text-ivory">
+                  Toutes
+                </option>
+                <option value="soumis_probable" className="bg-ink text-ivory">
+                  {getEligibilityLabel('soumis_probable')}
+                </option>
+                <option value="hors_perimetre_probable" className="bg-ink text-ivory">
+                  {getEligibilityLabel('hors_perimetre_probable')}
+                </option>
+                <option value="incertain" className="bg-ink text-ivory">
+                  {getEligibilityLabel('incertain')}
+                </option>
+              </select>
+            </label>
+            <button
+              type="button"
+              onClick={handleSelectAllFilteredCompanies}
+              disabled={filteredCompanies.length === 0}
+              className="inline-flex h-10 items-center gap-2 rounded-full border border-white/10 bg-ink-soft px-4 text-sm text-ivory transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Tout selectionner
+            </button>
+            <button
+              type="button"
+              onClick={handleExportCsv}
+              disabled={selectedCompanies.length === 0 || exporting}
+              className="inline-flex h-10 items-center gap-2 rounded-full border border-copper/40 bg-copper/10 px-4 text-sm text-copper-soft transition hover:border-copper hover:bg-copper hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Exporter CSV
+            </button>
+            <button
+              type="button"
+              onClick={handleExportExcel}
+              disabled={selectedCompanies.length === 0 || exporting}
+              className="inline-flex h-10 items-center gap-2 rounded-full border border-copper/40 bg-copper/10 px-4 text-sm text-copper-soft transition hover:border-copper hover:bg-copper hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Exporter Excel
+            </button>
             <label className="flex items-center gap-2 rounded-full border border-white/10 bg-ink-soft px-4 py-2 text-sm text-ivory-muted">
               <span>Accessibilite</span>
               <select
@@ -277,6 +444,15 @@ export default function HistoryPage() {
                 key={company.siren}
                 className="rounded-[24px] border border-white/10 bg-ink-soft p-5"
               >
+                <label className="mb-4 inline-flex items-center gap-3 text-sm text-ivory-muted">
+                  <input
+                    type="checkbox"
+                    checked={selectedCompanySirens.includes(company.siren)}
+                    onChange={() => toggleCompanySelection(company.siren)}
+                    className="h-4 w-4 rounded border border-white/20 bg-ink-soft accent-copper"
+                  />
+                  Selectionner pour export
+                </label>
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                   <div className="space-y-3">
                     <div className="flex flex-wrap items-center gap-3">
