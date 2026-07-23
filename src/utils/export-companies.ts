@@ -7,6 +7,32 @@ function sanitizeCell(value: string | number | null | undefined) {
   return String(value ?? '').replace(/\r?\n|\r/g, ' ').trim();
 }
 
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function escapeFormulaValue(value: string) {
+  return value.replace(/"/g, '""');
+}
+
+function normalizeWebsiteUrl(value: string | null | undefined) {
+  const website = sanitizeCell(value);
+  if (!website) return '';
+  if (/^https?:\/\//i.test(website)) {
+    return website;
+  }
+
+  return `https://${website}`;
+}
+
+function normalizeEmail(value: string | null | undefined) {
+  return sanitizeCell(value);
+}
+
 function getRows(companies: Company[]): ExportRow[] {
   return companies.map((company) => ({
     SIREN: company.siren,
@@ -19,8 +45,8 @@ function getRows(companies: Company[]): ExportRow[] {
     Statut: getEligibilityLabel(company.eligibility),
     Accessibilite: company.latestScanStatus ? getScanStatusLabel(company.latestScanStatus) : '',
     'Date dernier scan': sanitizeCell(company.latestScannedAt),
-    'Site internet': sanitizeCell(company.websiteUrl),
-    'Adresse email': sanitizeCell(company.email),
+    'Site internet': normalizeWebsiteUrl(company.websiteUrl),
+    'Adresse email': normalizeEmail(company.email),
   }));
 }
 
@@ -45,7 +71,18 @@ export function exportCompaniesToCsv(companies: Company[]) {
     headers.join(';'),
     ...rows.map((row) =>
       headers
-        .map((header) => `"${String(row[header] ?? '').replace(/"/g, '""')}"`)
+        .map((header) => {
+          const value = String(row[header] ?? '');
+          if (header === 'Site internet' && value) {
+            return `"=HYPERLINK(""${escapeFormulaValue(value)}"";""${escapeFormulaValue(value)}"")"`;
+          }
+
+          if (header === 'Adresse email' && value) {
+            return `"=HYPERLINK(""mailto:${escapeFormulaValue(value)}"";""${escapeFormulaValue(value)}"")"`;
+          }
+
+          return `"${escapeFormulaValue(value)}"`;
+        })
         .join(';'),
     ),
   ].join('\n');
@@ -66,10 +103,25 @@ export function exportCompaniesToExcel(companies: Company[]) {
       <tbody>
         ${rows
           .map(
-            (row) =>
-              `<tr>${headers
-                .map((header) => `<td>${String(row[header] ?? '')}</td>`)
-                .join('')}</tr>`,
+            (row) => {
+              const cells = headers
+                .map((header) => {
+                  const value = String(row[header] ?? '');
+
+                  if (header === 'Site internet' && value) {
+                    return `<td><a href="${escapeHtml(value)}">${escapeHtml(value)}</a></td>`;
+                  }
+
+                  if (header === 'Adresse email' && value) {
+                    return `<td><a href="mailto:${escapeHtml(value)}">${escapeHtml(value)}</a></td>`;
+                  }
+
+                  return `<td>${escapeHtml(value)}</td>`;
+                })
+                .join('');
+
+              return `<tr>${cells}</tr>`;
+            },
           )
           .join('')}
       </tbody>
