@@ -2,7 +2,7 @@ import type { CompanySearchResult } from '../types.js';
 
 const SEARCH_API_URL = 'https://recherche-entreprises.api.gouv.fr/search';
 const SEARCH_RESULTS_PER_PAGE = 20;
-const SEARCH_MAX_PAGES = 5;
+const SEARCH_MAX_PAGES = 10;
 
 const demoCompanies: CompanySearchResult[] = [
   {
