@@ -9,18 +9,44 @@ export type ContactExtraction = {
 const candidatePaths = [
   '',
   '/contact',
+  '/contact/',
   '/contactez-nous',
+  '/contactez-nous/',
   '/nous-contacter',
+  '/nous-contacter/',
+  '/nous-joindre',
+  '/nous-joindre/',
+  '/contacts',
+  '/contact-us',
+  '/contact-us/',
+  '/service-client',
+  '/service-client/',
   '/mentions-legales',
   '/mentions-legales/',
+  '/mentions-legales.html',
+  '/mentions-legales.htm',
+  '/mentions-legales.php',
+  '/mentions',
+  '/mentions/',
+  '/legal',
+  '/legal/',
+  '/a-propos',
+  '/a-propos/',
+  '/about',
+  '/about/',
+  '/footer/contact',
   '/support',
+  '/support/',
   '/sav',
+  '/sav/',
 ];
 
 const contactLinkPattern =
-  /(contact|contactez|nous-contacter|mentions-legales|support|sav|service-client)/i;
+  /(contact|contactez|nous-contacter|nous-joindre|mentions-legales|mentions|support|sav|service-client|service client|about|a-propos|legal)/i;
 
 const emailPattern = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
+const looseObfuscatedEmailPattern =
+  /([A-Z0-9._%+-]+)\s*(?:@|\(at\)|\[at\]|\bat\b|\barobase\b)\s*([A-Z0-9.-]+)\s*(?:\.|\(dot\)|\[dot\]|\bdot\b|\bpoint\b)\s*([A-Z]{2,})/gi;
 
 const ignoredEmails = new Set([
   'example@example.com',
@@ -39,6 +65,34 @@ function normalizeEmail(raw: string) {
 
 function uniq(items: string[]) {
   return Array.from(new Set(items));
+}
+
+function decodeObfuscatedEmail(raw: string) {
+  return raw
+    .trim()
+    .replace(/\s*(?:\(|\[)?at(?:\)|\])?\s*/gi, '@')
+    .replace(/\s+arobase\s+/gi, '@')
+    .replace(/\s*(?:\(|\[)?dot(?:\)|\])?\s*/gi, '.')
+    .replace(/\s+point\s+/gi, '.')
+    .replace(/\s+/g, '');
+}
+
+function normalizeObfuscatedText(raw: string) {
+  return raw
+    .replace(/\s*(?:\(|\[)\s*at\s*(?:\)|\])\s*/gi, '@')
+    .replace(/\s+arobase\s+/gi, '@')
+    .replace(/\s+at\s+/gi, '@')
+    .replace(/\s*(?:\(|\[)\s*dot\s*(?:\)|\])\s*/gi, '.')
+    .replace(/\s+point\s+/gi, '.')
+    .replace(/\s+dot\s+/gi, '.')
+    .replace(/\s*@\s*/g, '@')
+    .replace(/\s*\.\s*/g, '.');
+}
+
+function extractLooselyObfuscatedEmails(raw: string) {
+  return Array.from(raw.matchAll(looseObfuscatedEmailPattern)).map((match) =>
+    normalizeEmail(`${match[1]}@${match[2]}.${match[3]}`),
+  );
 }
 
 function isProbablyValidEmail(email: string) {
@@ -65,8 +119,24 @@ function extractEmailsFromHtml(html: string) {
   const text = $('body').text();
   const htmlMatches = (html.match(emailPattern) ?? []).map(normalizeEmail);
   const textMatches = (text.match(emailPattern) ?? []).map(normalizeEmail);
+  const obfuscatedHtmlMatches = (normalizeObfuscatedText(html).match(emailPattern) ?? [])
+    .map(decodeObfuscatedEmail)
+    .map(normalizeEmail);
+  const obfuscatedTextMatches = (normalizeObfuscatedText(text).match(emailPattern) ?? [])
+    .map(decodeObfuscatedEmail)
+    .map(normalizeEmail);
+  const looseHtmlMatches = extractLooselyObfuscatedEmails(html);
+  const looseTextMatches = extractLooselyObfuscatedEmails(text);
 
-  const combined = uniq([...mailtos, ...htmlMatches, ...textMatches]).filter(isProbablyValidEmail);
+  const combined = uniq([
+    ...mailtos,
+    ...htmlMatches,
+    ...textMatches,
+    ...obfuscatedHtmlMatches,
+    ...obfuscatedTextMatches,
+    ...looseHtmlMatches,
+    ...looseTextMatches,
+  ]).filter(isProbablyValidEmail);
   return {
     emails: combined,
     primaryEmail: combined[0] ?? null,
@@ -187,7 +257,7 @@ export async function extractContacts(websiteUrl: string): Promise<ContactExtrac
       emails = uniq([...emails, ...extraction.emails]);
     }
 
-    if (visited.size === 1) {
+    if (visited.size <= 2) {
       const discoveredLinks = extractContactLinks(url, result.html).filter((link) => {
         if (!baseHost) return false;
         try {
@@ -196,14 +266,14 @@ export async function extractContacts(websiteUrl: string): Promise<ContactExtrac
           return false;
         }
       });
-      for (const link of discoveredLinks.slice(0, 3)) {
+      for (const link of discoveredLinks.slice(0, 6)) {
         if (!visited.has(link)) {
           toVisit.push(link);
         }
       }
     }
 
-    if (emails.length > 0 && visited.size >= 2) {
+    if (emails.length > 0 && visited.size >= 3) {
       break;
     }
   }

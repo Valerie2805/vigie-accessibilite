@@ -55,5 +55,41 @@ describe('extractContacts', () => {
     expect(result.emails).not.toContain('contact@example.com');
     expect(result.email).toBe('bonjour@entreprise.fr');
   });
-});
 
+  it('decode un email masque dans le texte', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === 'https://assureur.fr') {
+          return htmlResponse('<p>Contact : relation-client [at] assureur [dot] fr</p>');
+        }
+        return htmlResponse('', 404);
+      }),
+    );
+
+    const result = await extractContacts('https://assureur.fr');
+    expect(result.email).toBe('relation-client@assureur.fr');
+  });
+
+  it('explore plusieurs liens de contact trouves sur le site', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === 'https://mutuelle.fr') {
+          return htmlResponse(
+            '<a href="/agences">Agences</a><a href="/nous-joindre">Nous joindre</a>',
+          );
+        }
+        if (url === 'https://mutuelle.fr/nous-joindre') {
+          return htmlResponse('<p>serviceclient@mutuelle.fr</p>');
+        }
+        return htmlResponse('', 404);
+      }),
+    );
+
+    const result = await extractContacts('https://mutuelle.fr');
+    expect(result.email).toBe('serviceclient@mutuelle.fr');
+  });
+});
