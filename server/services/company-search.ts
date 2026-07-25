@@ -1,6 +1,8 @@
 import type { CompanySearchResult } from '../types.js';
 
 const SEARCH_API_URL = 'https://recherche-entreprises.api.gouv.fr/search';
+const SEARCH_RESULTS_PER_PAGE = 20;
+const SEARCH_MAX_PAGES = 5;
 
 const demoCompanies: CompanySearchResult[] = [
   {
@@ -153,41 +155,57 @@ export async function searchCompanies(
     return [];
   }
 
-  const url = new URL(SEARCH_API_URL);
   const combinedQuery = [cleanedQuery, cleanedMetier, city?.trim() ?? '']
     .filter(Boolean)
     .join(' ')
     .trim();
 
-  url.searchParams.set('q', combinedQuery);
-  url.searchParams.set('page', '1');
-  url.searchParams.set('per_page', '20');
-
-  if (city?.trim()) {
-    url.searchParams.set('libelle_commune', city.trim());
-  }
-
   try {
-    const response = await fetch(url, {
-      headers: {
-        accept: 'application/json',
-        'User-Agent': 'TraeAccessibilityMvp/0.1',
-      },
-    });
+    const collectedResults: CompanySearchResult[] = [];
+    const seenSirens = new Set<string>();
 
-    if (!response.ok) {
-      throw new Error(`Search API responded with ${response.status}`);
+    for (let page = 1; page <= SEARCH_MAX_PAGES; page += 1) {
+      const url = new URL(SEARCH_API_URL);
+      url.searchParams.set('q', combinedQuery);
+      url.searchParams.set('page', String(page));
+      url.searchParams.set('per_page', String(SEARCH_RESULTS_PER_PAGE));
+
+      if (city?.trim()) {
+        url.searchParams.set('libelle_commune', city.trim());
+      }
+
+      const response = await fetch(url, {
+        headers: {
+          accept: 'application/json',
+          'User-Agent': 'TraeAccessibilityMvp/0.1',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Search API responded with ${response.status}`);
+      }
+
+      const payload = (await response.json()) as SearchApiResponse;
+      const pageResults = (payload.results ?? [])
+        .map(mapCompany)
+        .filter(Boolean) as CompanySearchResult[];
+
+      for (const company of pageResults) {
+        if (!seenSirens.has(company.siren)) {
+          seenSirens.add(company.siren);
+          collectedResults.push(company);
+        }
+      }
+
+      if (pageResults.length < SEARCH_RESULTS_PER_PAGE) {
+        break;
+      }
     }
 
-    const payload = (await response.json()) as SearchApiResponse;
-    return (payload.results ?? [])
-      .map(mapCompany)
-      .filter(Boolean)
-      .filter((company) => matchesCity(company as CompanySearchResult, city))
-      .filter((company) => matchesMetier(company as CompanySearchResult, metier))
-      .filter((company) =>
-        matchesRevenue(company as CompanySearchResult, minRevenue, maxRevenue),
-      ) as CompanySearchResult[];
+    return collectedResults
+      .filter((company) => matchesCity(company, city))
+      .filter((company) => matchesMetier(company, metier))
+      .filter((company) => matchesRevenue(company, minRevenue, maxRevenue));
   } catch {
     return demoCompanies.filter((company) => {
       const haystack = `${company.nom} ${company.siren} ${company.ville ?? ''}`.toLowerCase();
