@@ -16,11 +16,34 @@ import type { Company, EligibilityStatus, ScanStatus } from '@/types';
 type EligibilityFilter = 'tous' | EligibilityStatus;
 type AccessibilityFilter = 'tous' | 'sans_analyse' | ScanStatus;
 
+const activityOptions = [
+  { value: '', label: 'Choisir une activite' },
+  { value: 'banque', label: 'Banque' },
+  { value: 'assurance', label: 'Assurance' },
+  { value: 'mutuelle', label: 'Mutuelle' },
+  { value: 'e-commerce', label: 'E-commerce' },
+  { value: 'transport', label: 'Transport de voyageurs' },
+  { value: 'telecommunications', label: 'Telecommunications' },
+  { value: 'service public', label: 'Service public' },
+  { value: 'mission de service public', label: 'Mission de service public' },
+  { value: 'sante privee', label: 'Sante privee' },
+  { value: 'energie', label: 'Energie' },
+  { value: 'eau services essentiels', label: 'Eau et services essentiels' },
+  { value: 'grande distribution', label: 'Grande distribution' },
+  { value: 'tourisme hotellerie', label: 'Tourisme et hotellerie' },
+  { value: 'immobilier', label: 'Immobilier' },
+  { value: 'education formation', label: 'Education et formation' },
+  { value: 'medias audiovisuel', label: 'Medias et audiovisuel' },
+  { value: 'livres numeriques', label: 'Livres numeriques' },
+  { value: 'autre', label: 'Autre activite' },
+] as const;
+
 export default function Home() {
   const [query, setQuery] = useState('');
   const [city, setCity] = useState('');
   const [searchScope, setSearchScope] = useState<'france' | 'city'>('france');
-  const [metier, setMetier] = useState('');
+  const [selectedActivity, setSelectedActivity] = useState('');
+  const [customActivity, setCustomActivity] = useState('');
   const [minRevenue, setMinRevenue] = useState('');
   const [maxRevenue, setMaxRevenue] = useState('');
   const [eligibilityFilter, setEligibilityFilter] = useState<EligibilityFilter>('tous');
@@ -32,6 +55,8 @@ export default function Home() {
   const [enriching, setEnriching] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const metier = selectedActivity === 'autre' ? customActivity : selectedActivity;
 
   const filteredResults = useMemo(() => {
     return results.filter((company) => {
@@ -53,35 +78,8 @@ export default function Home() {
     [filteredResults, selectedSirens],
   );
 
-  async function handleSearch(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setLoading(true);
-    setError(null);
-
-    try {
-      const response = await searchCompanies(
-        query,
-        searchScope === 'city' ? city : undefined,
-        metier,
-        minRevenue ? Number(minRevenue) : undefined,
-        maxRevenue ? Number(maxRevenue) : undefined,
-      );
-      setResults(response.results);
-      setSelectedSirens([]);
-      saveRecentCompaniesToBrowser(response.results);
-    } catch (requestError) {
-      setError(
-        requestError instanceof Error
-          ? requestError.message
-          : 'La recherche a echoue.',
-      );
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleEnrichWebsites() {
-    const targets = results.filter((company) => !company.websiteUrl || !company.email);
+  async function enrichCompanies(targetCompanies: Company[]) {
+    const targets = targetCompanies.filter((company) => !company.websiteUrl || !company.email);
     if (targets.length === 0) {
       return;
     }
@@ -104,9 +102,7 @@ export default function Home() {
 
         setResults((current) =>
           current.map((item) =>
-            item.siren === company.siren
-              ? updatedCompany
-              : item,
+            item.siren === company.siren ? updatedCompany : item,
           ),
         );
         saveRecentCompaniesToBrowser([updatedCompany]);
@@ -122,37 +118,36 @@ export default function Home() {
     }
   }
 
-  async function ensureExportDataForCompanies(companies: Company[]) {
-    const targets = companies.filter((company) => !company.websiteUrl || !company.email);
-    if (targets.length === 0) {
-      return companies;
-    }
+  async function handleSearch(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setLoading(true);
+    setError(null);
 
-    const updatedBySiren = new Map<string, Company>();
-
-    for (const company of targets) {
-      const response = await resolveWebsite(company.siren, company.websiteUrl ?? undefined);
-      const updatedCompany = {
-        ...company,
-        websiteUrl: response.company.websiteUrl,
-        websiteSource: response.company.websiteSource,
-        websiteConfidence: response.company.websiteConfidence,
-        email: response.company.email,
-        latestScanStatus: response.company.latestScanStatus ?? company.latestScanStatus ?? null,
-        latestScannedAt: response.company.latestScannedAt ?? company.latestScannedAt ?? null,
-      };
-
-      updatedBySiren.set(company.siren, updatedCompany);
-
-      setResults((current) =>
-        current.map((item) =>
-          item.siren === company.siren ? updatedCompany : item,
-        ),
+    try {
+      const response = await searchCompanies(
+        query,
+        searchScope === 'city' ? city : undefined,
+        metier,
+        minRevenue ? Number(minRevenue) : undefined,
+        maxRevenue ? Number(maxRevenue) : undefined,
       );
-      saveRecentCompaniesToBrowser([updatedCompany]);
+      setResults(response.results);
+      setSelectedSirens([]);
+      saveRecentCompaniesToBrowser(response.results);
+      void enrichCompanies(response.results);
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : 'La recherche a echoue.',
+      );
+    } finally {
+      setLoading(false);
     }
+  }
 
-    return companies.map((company) => updatedBySiren.get(company.siren) ?? company);
+  async function handleEnrichWebsites() {
+    await enrichCompanies(results);
   }
 
   async function handleExportCsv() {
@@ -161,8 +156,7 @@ export default function Home() {
     setError(null);
 
     try {
-      const enriched = await ensureExportDataForCompanies(selectedResults);
-      exportCompaniesToCsv(enriched);
+      exportCompaniesToCsv(selectedResults);
     } catch (requestError) {
       setError(
         requestError instanceof Error ? requestError.message : "Impossible d'exporter.",
@@ -178,8 +172,7 @@ export default function Home() {
     setError(null);
 
     try {
-      const enriched = await ensureExportDataForCompanies(selectedResults);
-      exportCompaniesToExcel(enriched);
+      exportCompaniesToExcel(selectedResults);
     } catch (requestError) {
       setError(
         requestError instanceof Error ? requestError.message : "Impossible d'exporter.",
@@ -303,15 +296,43 @@ export default function Home() {
 
             <label className="space-y-2">
               <span className="text-xs uppercase tracking-[0.2em] text-ivory-muted">
-                Metier ou activite
+                Activite
               </span>
-              <input
-                value={metier}
-                onChange={(event) => setMetier(event.target.value)}
+              <select
+                value={selectedActivity}
+                onChange={(event) => {
+                  setSelectedActivity(event.target.value);
+                  if (event.target.value !== 'autre') {
+                    setCustomActivity('');
+                  }
+                }}
                 className="h-14 w-full rounded-2xl border border-white/10 bg-ink-soft px-4 text-sm text-ivory outline-none transition focus:border-copper/50"
-                placeholder="Ex. fleuriste, boulangerie, coiffure"
-              />
+              >
+                {activityOptions.map((option) => (
+                  <option
+                    key={option.value || 'placeholder'}
+                    value={option.value}
+                    className="bg-ink text-ivory"
+                  >
+                    {option.label}
+                  </option>
+                ))}
+              </select>
             </label>
+
+            {selectedActivity === 'autre' ? (
+              <label className="space-y-2">
+                <span className="text-xs uppercase tracking-[0.2em] text-ivory-muted">
+                  Autre activite
+                </span>
+                <input
+                  value={customActivity}
+                  onChange={(event) => setCustomActivity(event.target.value)}
+                  className="h-14 w-full rounded-2xl border border-white/10 bg-ink-soft px-4 text-sm text-ivory outline-none transition focus:border-copper/50"
+                  placeholder="Ex. fleuriste, boulangerie, coiffure"
+                />
+              </label>
+            ) : null}
 
             <label className="space-y-2">
               <span className="text-xs uppercase tracking-[0.2em] text-ivory-muted">
@@ -362,7 +383,7 @@ export default function Home() {
             </button>
             <p className="text-sm text-ivory-muted">
               Recherche sur toute la France par defaut, puis filtrage optionnel par
-              ville, metier et chiffre d'affaires quand ces donnees existent.
+              ville, activite et chiffre d'affaires quand ces donnees existent.
             </p>
           </div>
 
