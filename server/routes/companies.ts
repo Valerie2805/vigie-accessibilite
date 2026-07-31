@@ -158,8 +158,13 @@ router.post('/resolve-website', async (req, res, next) => {
     setCompanyWebsite(company.siren, resolution);
     const stored = getCompanyFromStorage(company.siren);
 
+    let emailNotes: string[] = [];
+    let emailSource: 'site' | 'snov' | 'inconnue' = 'inconnue';
+
     if (resolution.websiteUrl) {
       const contacts = await resolveCompanyEmail(resolution.websiteUrl);
+      emailNotes = contacts.notes;
+      emailSource = contacts.source;
       const existingEmail = stored?.email ?? null;
       if (contacts.email && contacts.email !== existingEmail) {
         setCompanyEmail(company.siren, contacts.email, contacts.source, contacts.notes);
@@ -179,11 +184,18 @@ router.post('/resolve-website', async (req, res, next) => {
         websiteSource: resolution.source,
         websiteConfidence: resolution.confidence,
         email: storedAfter?.email ?? null,
+        emailSource: storedAfter?.email ? storedAfter.emailSource : emailSource,
         eligibility: estimateEligibility(company),
         latestScanStatus: latestScanIndex.get(company.siren)?.status ?? null,
         latestScannedAt: latestScanIndex.get(company.siren)?.scannedAt ?? null,
       },
-      resolution,
+      resolution: {
+        ...resolution,
+        notes: [
+          ...resolution.notes,
+          ...emailNotes.map((note) => `Email: ${note}`),
+        ],
+      },
     });
   } catch (error) {
     next(error);
