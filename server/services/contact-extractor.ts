@@ -265,6 +265,7 @@ export async function extractContacts(websiteUrl: string): Promise<ContactExtrac
   const toVisit: string[] = [];
   const MAX_VISITED_PAGES = 10;
 
+  // Prioritize contact pages discovered from the homepage before exhausting fallback paths.
   function enqueue(url: string | null | undefined, priority = false) {
     if (!url || visited.has(url) || queued.has(url)) {
       return;
