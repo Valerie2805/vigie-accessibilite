@@ -16,6 +16,29 @@ import type { Company, EligibilityStatus, ScanStatus } from '@/types';
 type EligibilityFilter = 'tous' | EligibilityStatus;
 type AccessibilityFilter = 'tous' | 'sans_analyse' | ScanStatus;
 
+const clientSearchOptions = [
+  {
+    label: 'Agences web',
+    keywords: [
+      'agence web',
+      'creation site internet',
+      'refonte site internet',
+    ],
+  },
+  {
+    label: 'Studios / freelances structures',
+    keywords: ['studio digital', 'studio web', 'WordPress', 'site vitrine'],
+  },
+  {
+    label: 'Communication digitale',
+    keywords: [
+      'communication digitale',
+      'marketing digital',
+      'strategie digitale',
+    ],
+  },
+] as const;
+
 const activityOptions = [
   { value: '', label: 'Choisir une activite' },
   { value: 'banque', label: 'Banque' },
@@ -40,6 +63,7 @@ const activityOptions = [
 
 export default function Home() {
   const [query, setQuery] = useState('');
+  const [selectedClientSearch, setSelectedClientSearch] = useState('');
   const [city, setCity] = useState('');
   const [searchScope, setSearchScope] = useState<'france' | 'city'>('france');
   const [selectedActivity, setSelectedActivity] = useState('');
@@ -237,10 +261,42 @@ export default function Home() {
               </span>
               <input
                 value={query}
-                onChange={(event) => setQuery(event.target.value)}
+                onChange={(event) => {
+                  setQuery(event.target.value);
+                  if (event.target.value !== selectedClientSearch) {
+                    setSelectedClientSearch('');
+                  }
+                }}
                 className="h-14 w-full rounded-2xl border border-white/10 bg-ink-soft px-4 text-sm text-ivory outline-none transition focus:border-copper/50"
                 placeholder="Ex. La Poste, LVMH, 356000000"
               />
+            </label>
+
+            <label className="space-y-2">
+              <span className="text-xs uppercase tracking-[0.2em] text-ivory-muted">
+                Recherche client
+              </span>
+              <select
+                value={selectedClientSearch}
+                onChange={(event) => {
+                  setSelectedClientSearch(event.target.value);
+                  setQuery(event.target.value);
+                }}
+                className="h-14 w-full rounded-2xl border border-white/10 bg-ink-soft px-4 text-sm text-ivory outline-none transition focus:border-copper/50"
+              >
+                <option value="" className="bg-ink text-ivory">
+                  Choisir une recherche client
+                </option>
+                {clientSearchOptions.map((group) => (
+                  <optgroup key={group.label} label={group.label}>
+                    {group.keywords.map((keyword) => (
+                      <option key={keyword} value={keyword} className="bg-ink text-ivory">
+                        {keyword}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
             </label>
 
             <div className="space-y-2">
