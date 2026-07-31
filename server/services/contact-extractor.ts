@@ -261,33 +261,46 @@ export async function extractContacts(websiteUrl: string): Promise<ContactExtrac
   })();
   const notes: string[] = [];
   const visited = new Set<string>();
+  const queued = new Set<string>();
   const toVisit: string[] = [];
   const MAX_VISITED_PAGES = 10;
 
+  function enqueue(url: string | null | undefined, priority = false) {
+    if (!url || visited.has(url) || queued.has(url)) {
+      return;
+    }
+
+    if (priority) {
+      toVisit.unshift(url);
+    } else {
+      toVisit.push(url);
+    }
+    queued.add(url);
+  }
+
+  enqueue(base);
   for (const path of candidatePaths) {
     if (!path) {
-      toVisit.push(base);
       continue;
     }
 
-    const resolved = resolveUrl(base, path);
-    if (resolved) {
-      toVisit.push(resolved);
-    }
+    enqueue(resolveUrl(base, path));
   }
 
   let emails: string[] = [];
 
-  for (const url of toVisit) {
+  while (toVisit.length > 0) {
     if (visited.size >= MAX_VISITED_PAGES) {
       notes.push(`Limite d'exploration atteinte (${MAX_VISITED_PAGES} pages)`);
       break;
     }
 
-    if (visited.has(url)) {
+    const url = toVisit.shift();
+    if (!url || visited.has(url)) {
       continue;
     }
 
+    queued.delete(url);
     visited.add(url);
     const result = await fetchHtml(url);
     if (!result.html) {
@@ -312,9 +325,7 @@ export async function extractContacts(websiteUrl: string): Promise<ContactExtrac
         }
       });
       for (const link of discoveredLinks.slice(0, 8)) {
-        if (!visited.has(link)) {
-          toVisit.push(link);
-        }
+        enqueue(link, true);
       }
     }
 
