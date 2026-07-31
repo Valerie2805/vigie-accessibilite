@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { scanWebsite } from '../services/accessibility-scanner.js';
-import { extractContacts } from '../services/contact-extractor.js';
+import { resolveCompanyEmail } from '../services/company-email-resolver.js';
 import { getCompanyBySiren } from '../services/company-search.js';
 import { computeScore, estimateEligibility } from '../services/scoring.js';
 import {
@@ -70,9 +70,9 @@ router.post('/', async (req, res, next) => {
       return;
     }
 
-    const contacts = await extractContacts(resolution.websiteUrl);
+    const contacts = await resolveCompanyEmail(resolution.websiteUrl);
     if (contacts.email) {
-      setCompanyEmail(company.siren, contacts.email, 'site', contacts.notes);
+      setCompanyEmail(company.siren, contacts.email, contacts.source, contacts.notes);
     }
 
     const scanResult = await scanWebsite(resolution.websiteUrl);

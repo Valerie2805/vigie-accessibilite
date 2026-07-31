@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { extractContacts } from '../services/contact-extractor.js';
+import { resolveCompanyEmail } from '../services/company-email-resolver.js';
 import { getCompanyBySiren, searchCompanies } from '../services/company-search.js';
 import { estimateEligibility } from '../services/scoring.js';
 import {
@@ -159,12 +159,12 @@ router.post('/resolve-website', async (req, res, next) => {
     const stored = getCompanyFromStorage(company.siren);
 
     if (resolution.websiteUrl) {
-      const contacts = await extractContacts(resolution.websiteUrl);
+      const contacts = await resolveCompanyEmail(resolution.websiteUrl);
       const existingEmail = stored?.email ?? null;
       if (contacts.email && contacts.email !== existingEmail) {
-        setCompanyEmail(company.siren, contacts.email, 'site', contacts.notes);
+        setCompanyEmail(company.siren, contacts.email, contacts.source, contacts.notes);
       } else if (!existingEmail && contacts.email) {
-        setCompanyEmail(company.siren, contacts.email, 'site', contacts.notes);
+        setCompanyEmail(company.siren, contacts.email, contacts.source, contacts.notes);
       }
     }
 

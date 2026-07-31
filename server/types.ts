@@ -29,7 +29,7 @@ export type CompanyRecord = CompanySearchResult & {
   websiteConfidence: WebsiteResolution['confidence'];
   websiteNotes: string[];
   email: string | null;
-  emailSource: 'site' | 'inconnue';
+  emailSource: 'site' | 'snov' | 'inconnue';
   emailNotes: string[];
   lastSeenAt: string;
 };
