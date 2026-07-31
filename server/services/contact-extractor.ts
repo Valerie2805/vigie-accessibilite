@@ -98,6 +98,18 @@ function extractLooselyObfuscatedEmails(raw: string) {
   );
 }
 
+function extractEmailsFromRaw(raw: string) {
+  const directMatches = (raw.match(emailPattern) ?? []).map(normalizeEmail);
+  const obfuscatedMatches = (normalizeObfuscatedText(raw).match(emailPattern) ?? [])
+    .map(decodeObfuscatedEmail)
+    .map(normalizeEmail);
+  const looseMatches = extractLooselyObfuscatedEmails(raw);
+
+  return uniq([...directMatches, ...obfuscatedMatches, ...looseMatches]).filter(
+    isProbablyValidEmail,
+  );
+}
+
 function decodeCloudflareEmail(encoded: string) {
   const normalized = encoded.trim().toLowerCase();
   if (!/^[0-9a-f]+$/.test(normalized) || normalized.length < 4 || normalized.length % 2 !== 0) {
@@ -250,6 +262,138 @@ function extractContactLinks(baseUrl: string, html: string) {
   return uniq(links);
 }
 
+function parseSearchResultUrl(rawUrl: string) {
+  try {
+    const parsed = new URL(rawUrl, 'https://duckduckgo.com');
+    const redirected = parsed.searchParams.get('uddg');
+    return redirected ? decodeURIComponent(redirected) : parsed.toString();
+  } catch {
+    return rawUrl;
+  }
+}
+
+function extractSearchCandidates(html: string) {
+  const $ = cheerio.load(html);
+  return $('a.result__a, a[data-testid="result-title-a"], .result a[href], .links_main a[href]')
+    .slice(0, 8)
+    .map((_, element) => {
+      const href = $(element).attr('href');
+      const title = $(element).text().trim();
+      const snippet =
+        $(element)
+          .closest('.result, .web-result')
+          .find('.result__snippet, .result__extras')
+          .text()
+          .trim() ?? '';
+
+      if (!href || !title) {
+        return null;
+      }
+
+      return {
+        url: parseSearchResultUrl(href),
+        title,
+        snippet,
+      };
+    })
+    .get()
+    .filter(
+      (candidate): candidate is { url: string; title: string; snippet: string } =>
+        Boolean(candidate),
+    );
+}
+
+async function searchEmailsOnWeb(websiteUrl: string) {
+  const notes: string[] = [];
+  const foundEmails = new Set<string>();
+
+  let host = '';
+  let canonicalHost = '';
+  try {
+    host = new URL(websiteUrl).host;
+    canonicalHost = host.replace(/^www\./i, '');
+  } catch {
+    return { emails: [], notes };
+  }
+
+  const queries = [
+    `site:${host} ${canonicalHost}`,
+    `site:${host} contact@${canonicalHost}`,
+    `site:${host} email`,
+  ];
+
+  const fetchedPages = new Set<string>();
+
+  for (const query of queries) {
+    const searchUrl = new URL('https://html.duckduckgo.com/html/');
+    searchUrl.searchParams.set('q', query);
+
+    try {
+      const response = await fetch(searchUrl, {
+        headers: {
+          'User-Agent': 'TraeAccessibilityMvp/0.1',
+        },
+        signal: AbortSignal.timeout(8000),
+      });
+
+      if (!response.ok) {
+        notes.push(`Recherche web ignoree (${response.status}) : ${query}`);
+        continue;
+      }
+
+      const html = await response.text();
+      const candidates = extractSearchCandidates(html);
+
+      for (const candidate of candidates) {
+        for (const email of extractEmailsFromRaw(
+          `${candidate.title} ${candidate.snippet} ${candidate.url}`,
+        )) {
+          foundEmails.add(email);
+        }
+
+        if (fetchedPages.size >= 3) {
+          continue;
+        }
+
+        try {
+          const candidateUrl = new URL(candidate.url);
+          const candidateHost = candidateUrl.host.replace(/^www\./i, '');
+          if (candidateHost !== canonicalHost) {
+            continue;
+          }
+        } catch {
+          continue;
+        }
+
+        if (fetchedPages.has(candidate.url)) {
+          continue;
+        }
+
+        fetchedPages.add(candidate.url);
+        const pageResult = await fetchHtml(candidate.url);
+        if (!pageResult.html) {
+          continue;
+        }
+
+        for (const email of extractEmailsFromHtml(pageResult.html).emails) {
+          foundEmails.add(email);
+        }
+      }
+    } catch {
+      notes.push(`Recherche web impossible : ${query}`);
+    }
+
+    if (foundEmails.size > 0) {
+      break;
+    }
+  }
+
+  return {
+    emails: Array.from(foundEmails),
+    notes,
+  };
+}
+
 export async function extractContacts(websiteUrl: string): Promise<ContactExtraction> {
   const base = websiteUrl.replace(/\/$/, '');
   const baseHost = (() => {
@@ -333,6 +477,15 @@ export async function extractContacts(websiteUrl: string): Promise<ContactExtrac
     if (emails.length > 0 && visited.size >= 5) {
       break;
     }
+  }
+
+  if (emails.length === 0) {
+    const webFallback = await searchEmailsOnWeb(base);
+    if (webFallback.emails.length > 0) {
+      emails = uniq([...emails, ...webFallback.emails]);
+      notes.push('Email trouve via recherche web publique');
+    }
+    notes.push(...webFallback.notes);
   }
 
   return {
