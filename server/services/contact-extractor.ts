@@ -28,6 +28,20 @@ const candidatePaths = [
   '/mentions-legales.php',
   '/mentions',
   '/mentions/',
+  '/politique-de-confidentialite',
+  '/politique-de-confidentialite/',
+  '/politique-confidentialite',
+  '/politique-confidentialite/',
+  '/confidentialite',
+  '/confidentialite/',
+  '/privacy-policy',
+  '/privacy-policy/',
+  '/politique-de-vie-privee',
+  '/politique-de-vie-privee/',
+  '/cgv',
+  '/cgv/',
+  '/cgu',
+  '/cgu/',
   '/legal',
   '/legal/',
   '/a-propos',
@@ -41,8 +55,11 @@ const candidatePaths = [
   '/sav/',
 ];
 
+const priorityPathPattern =
+  /(contact|mentions|legal|confidentialite|privacy|vie-privee|cgv|cgu)/i;
+
 const contactLinkPattern =
-  /(contact|contactez|nous-contacter|nous-joindre|mentions-legales|mentions|support|sav|service-client|service client|about|a-propos|legal)/i;
+  /(contact|contactez|nous-contacter|nous-joindre|mentions-legales|mentions|politique-de-confidentialite|politique-confidentialite|confidentialite|privacy-policy|vie-privee|cgv|cgu|support|sav|service-client|service client|about|a-propos|legal)/i;
 
 const emailPattern = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
 const looseObfuscatedEmailPattern =
@@ -407,11 +424,22 @@ export async function extractContacts(websiteUrl: string): Promise<ContactExtrac
   const visited = new Set<string>();
   const queued = new Set<string>();
   const toVisit: string[] = [];
-  const MAX_VISITED_PAGES = 10;
+  const MAX_VISITED_PAGES = 20;
 
   // Prioritize contact pages discovered from the homepage before exhausting fallback paths.
   function enqueue(url: string | null | undefined, priority = false) {
-    if (!url || visited.has(url) || queued.has(url)) {
+    if (!url || visited.has(url)) {
+      return;
+    }
+
+    if (queued.has(url)) {
+      if (priority) {
+        const existingIndex = toVisit.indexOf(url);
+        if (existingIndex >= 0) {
+          toVisit.splice(existingIndex, 1);
+          toVisit.unshift(url);
+        }
+      }
       return;
     }
 
@@ -424,11 +452,12 @@ export async function extractContacts(websiteUrl: string): Promise<ContactExtrac
   }
 
   enqueue(base);
-  for (const path of candidatePaths) {
-    if (!path) {
-      continue;
-    }
+  const prioritizedPaths = candidatePaths.filter((path) => path && priorityPathPattern.test(path));
+  const secondaryPaths = candidatePaths.filter(
+    (path) => path && !priorityPathPattern.test(path),
+  );
 
+  for (const path of [...prioritizedPaths, ...secondaryPaths]) {
     enqueue(resolveUrl(base, path));
   }
 
