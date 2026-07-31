@@ -6,6 +6,13 @@ type SnovEmailResolution = {
   notes: string[];
 };
 
+type SnovProspect = {
+  first_name?: string;
+  last_name?: string;
+  position?: string;
+  search_emails_start?: string;
+};
+
 function normalizeEmail(value: string) {
   return value.trim().toLowerCase();
 }
@@ -92,6 +99,19 @@ function extractTaskHash(payload: Record<string, unknown>) {
   return match?.[1] ?? null;
 }
 
+function extractResultLink(payload: Record<string, unknown>) {
+  if (
+    payload.links &&
+    typeof payload.links === 'object' &&
+    'result' in payload.links &&
+    typeof payload.links.result === 'string'
+  ) {
+    return payload.links.result;
+  }
+
+  return null;
+}
+
 function extractEmailsDeep(value: unknown): string[] {
   if (!value) {
     return [];
@@ -153,15 +173,14 @@ async function runDomainTask(
   resultBaseUrl: string,
   domain: string,
 ) {
-  const params = new URLSearchParams({ domain });
+  const requestUrl = new URL(startUrl);
+  requestUrl.searchParams.set('domain', domain);
 
-  const startResponse = await fetch(startUrl, {
+  const startResponse = await fetch(requestUrl, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/x-www-form-urlencoded',
     },
-    body: params.toString(),
     signal: AbortSignal.timeout(10000),
   });
 
@@ -205,6 +224,133 @@ async function runDomainTask(
   return [];
 }
 
+async function fetchTaskEmails(token: string, resultUrl: string) {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const response = await fetch(resultUrl, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Lecture du resultat Snov.io impossible (${response.status})`);
+    }
+
+    const payload = (await response.json()) as Record<string, unknown>;
+    const status = typeof payload.status === 'string' ? payload.status : '';
+    const emails = uniq(extractEmailsDeep(payload.data));
+
+    if (emails.length > 0) {
+      return emails;
+    }
+
+    if (status === 'completed') {
+      return [];
+    }
+
+    await wait(800);
+  }
+
+  return [];
+}
+
+async function runProspectEmailTask(token: string, startUrl: string) {
+  const response = await fetch(startUrl, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    signal: AbortSignal.timeout(10000),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Recherche email prospect Snov.io impossible (${response.status})`);
+  }
+
+  const payload = (await response.json()) as Record<string, unknown>;
+  const inlineEmails = uniq(extractEmailsDeep(payload.data));
+  if (inlineEmails.length > 0) {
+    return inlineEmails;
+  }
+
+  const resultLink = extractResultLink(payload);
+  if (resultLink) {
+    return fetchTaskEmails(token, resultLink);
+  }
+
+  const taskHash = extractTaskHash(payload);
+  if (taskHash) {
+    return fetchTaskEmails(
+      token,
+      `https://api.snov.io/v2/domain-search/prospects/search-emails/result/${taskHash}`,
+    );
+  }
+
+  return [];
+}
+
+async function searchProspectEmails(token: string, domain: string) {
+  const requestUrl = new URL('https://api.snov.io/v2/domain-search/prospects/start');
+  requestUrl.searchParams.set('domain', domain);
+  requestUrl.searchParams.set('page', '1');
+
+  const startResponse = await fetch(requestUrl, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    signal: AbortSignal.timeout(10000),
+  });
+
+  if (!startResponse.ok) {
+    throw new Error(`Recherche prospects Snov.io impossible (${startResponse.status})`);
+  }
+
+  const startPayload = (await startResponse.json()) as Record<string, unknown>;
+  const resultLink =
+    extractResultLink(startPayload) ??
+    (() => {
+      const taskHash = extractTaskHash(startPayload);
+      return taskHash
+        ? `https://api.snov.io/v2/domain-search/prospects/result/${taskHash}`
+        : null;
+    })();
+
+  if (!resultLink) {
+    return [];
+  }
+
+  const resultResponse = await fetch(resultLink, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    signal: AbortSignal.timeout(10000),
+  });
+
+  if (!resultResponse.ok) {
+    throw new Error(`Lecture prospects Snov.io impossible (${resultResponse.status})`);
+  }
+
+  const resultPayload = (await resultResponse.json()) as Record<string, unknown>;
+  const prospects = Array.isArray(resultPayload.data)
+    ? (resultPayload.data as SnovProspect[])
+    : [];
+
+  const emails: string[] = [];
+
+  for (const prospect of prospects.slice(0, 10)) {
+    if (!prospect.search_emails_start) {
+      continue;
+    }
+
+    const prospectEmails = await runProspectEmailTask(token, prospect.search_emails_start);
+    emails.push(...prospectEmails);
+  }
+
+  return uniq(emails);
+}
+
 export async function findCompanyEmailsWithSnov(websiteUrl: string): Promise<SnovEmailResolution> {
   const domain = getDomainFromWebsite(websiteUrl);
   if (!domain) {
@@ -235,6 +381,7 @@ export async function findCompanyEmailsWithSnov(websiteUrl: string): Promise<Sno
       };
     }
 
+    const prospectEmails = await searchProspectEmails(token, domain);
     const domainEmails = await runDomainTask(
       token,
       'https://api.snov.io/v2/domain-search/domain-emails/start',
@@ -249,7 +396,7 @@ export async function findCompanyEmailsWithSnov(websiteUrl: string): Promise<Sno
       domain,
     );
 
-    const emails = uniq([...genericEmails, ...domainEmails]).filter((email) =>
+    const emails = uniq([...prospectEmails, ...genericEmails, ...domainEmails]).filter((email) =>
       email.endsWith(`@${domain}`),
     );
 
