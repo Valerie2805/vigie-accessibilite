@@ -79,6 +79,9 @@ function decodeObfuscatedEmail(raw: string) {
 
 function normalizeObfuscatedText(raw: string) {
   return raw
+    .replace(/\\u([0-9a-f]{4})/gi, (_, hex: string) =>
+      String.fromCharCode(Number.parseInt(hex, 16)),
+    )
     .replace(/\s*(?:\(|\[)\s*at\s*(?:\)|\])\s*/gi, '@')
     .replace(/\s+arobase\s+/gi, '@')
     .replace(/\s+at\s+/gi, '@')
@@ -93,6 +96,27 @@ function extractLooselyObfuscatedEmails(raw: string) {
   return Array.from(raw.matchAll(looseObfuscatedEmailPattern)).map((match) =>
     normalizeEmail(`${match[1]}@${match[2]}.${match[3]}`),
   );
+}
+
+function decodeCloudflareEmail(encoded: string) {
+  const normalized = encoded.trim().toLowerCase();
+  if (!/^[0-9a-f]+$/.test(normalized) || normalized.length < 4 || normalized.length % 2 !== 0) {
+    return null;
+  }
+
+  try {
+    const key = Number.parseInt(normalized.slice(0, 2), 16);
+    let decoded = '';
+
+    for (let index = 2; index < normalized.length; index += 2) {
+      const value = Number.parseInt(normalized.slice(index, index + 2), 16) ^ key;
+      decoded += String.fromCharCode(value);
+    }
+
+    return normalizeEmail(decoded);
+  } catch {
+    return null;
+  }
 }
 
 function isProbablyValidEmail(email: string) {
@@ -115,6 +139,20 @@ function extractEmailsFromHtml(html: string) {
     .map(normalizeEmail)
     .filter(Boolean)
     .filter(isProbablyValidEmail);
+  const cloudflareEmails = uniq([
+    ...$('[data-cfemail]')
+      .map((_, element) => decodeCloudflareEmail($(element).attr('data-cfemail') ?? ''))
+      .get()
+      .filter((value): value is string => Boolean(value)),
+    ...$('a[href*="/cdn-cgi/l/email-protection#"]')
+      .map((_, element) => {
+        const href = $(element).attr('href') ?? '';
+        const encoded = href.split('#')[1] ?? '';
+        return decodeCloudflareEmail(encoded);
+      })
+      .get()
+      .filter((value): value is string => Boolean(value)),
+  ]).filter(isProbablyValidEmail);
 
   const text = $('body').text();
   const htmlMatches = (html.match(emailPattern) ?? []).map(normalizeEmail);
@@ -130,6 +168,7 @@ function extractEmailsFromHtml(html: string) {
 
   const combined = uniq([
     ...mailtos,
+    ...cloudflareEmails,
     ...htmlMatches,
     ...textMatches,
     ...obfuscatedHtmlMatches,
@@ -223,6 +262,7 @@ export async function extractContacts(websiteUrl: string): Promise<ContactExtrac
   const notes: string[] = [];
   const visited = new Set<string>();
   const toVisit: string[] = [];
+  const MAX_VISITED_PAGES = 10;
 
   for (const path of candidatePaths) {
     if (!path) {
@@ -239,6 +279,11 @@ export async function extractContacts(websiteUrl: string): Promise<ContactExtrac
   let emails: string[] = [];
 
   for (const url of toVisit) {
+    if (visited.size >= MAX_VISITED_PAGES) {
+      notes.push(`Limite d'exploration atteinte (${MAX_VISITED_PAGES} pages)`);
+      break;
+    }
+
     if (visited.has(url)) {
       continue;
     }
@@ -257,7 +302,7 @@ export async function extractContacts(websiteUrl: string): Promise<ContactExtrac
       emails = uniq([...emails, ...extraction.emails]);
     }
 
-    if (visited.size <= 2) {
+    if (visited.size <= 4) {
       const discoveredLinks = extractContactLinks(url, result.html).filter((link) => {
         if (!baseHost) return false;
         try {
@@ -266,14 +311,14 @@ export async function extractContacts(websiteUrl: string): Promise<ContactExtrac
           return false;
         }
       });
-      for (const link of discoveredLinks.slice(0, 6)) {
+      for (const link of discoveredLinks.slice(0, 8)) {
         if (!visited.has(link)) {
           toVisit.push(link);
         }
       }
     }
 
-    if (emails.length > 0 && visited.size >= 3) {
+    if (emails.length > 0 && visited.size >= 5) {
       break;
     }
   }
