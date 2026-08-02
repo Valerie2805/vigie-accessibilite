@@ -67,3 +67,97 @@ export type ScanRecord = {
   evidences: ScanEvidence[];
   notes: string[];
 };
+
+export type OpportunitySignalCategory =
+  | 'contraste'
+  | 'images_sans_alternative'
+  | 'structure_semantique'
+  | 'navigation_clavier'
+  | 'formulaires'
+  | 'menus_modales_popups'
+  | 'composants_interactifs'
+  | 'documents_pdf'
+  | 'medias'
+  | 'erreurs_recurrentes_globales';
+
+export type OpportunitySeverity = 'low' | 'medium' | 'high';
+export type OpportunityConfidence = 'low' | 'medium' | 'high';
+
+export type OpportunitySignal = {
+  category: OpportunitySignalCategory;
+  severity: OpportunitySeverity;
+  confidence: OpportunityConfidence;
+  detectedAutomatically: boolean;
+  countEstimate: number;
+  affectedPages: string[];
+};
+
+export type OpportunityLeadLabel = 'froid' | 'tiede' | 'chaud';
+export type OpportunityUrgency = 'faible' | 'moyenne' | 'elevee';
+export type OpportunityStatus =
+  | 'new'
+  | 'reviewed'
+  | 'contacted'
+  | 'qualified'
+  | 'discarded';
+export type OpportunitySiteType =
+  | 'vitrine'
+  | 'corporate'
+  | 'transactionnel'
+  | 'portail_client'
+  | 'media'
+  | 'unknown';
+export type OpportunityOffer =
+  | 'audit_flash'
+  | 'audit_complet'
+  | 'audit_complet_plus_remediation'
+  | 'mise_en_conformite_rgaa_eaa'
+  | 'monitoring_continu'
+  | 'formation_plus_accompagnement'
+  | 'audit_design_system_front';
+
+export type OpportunityScores = {
+  leadScore: number;
+  leadLabel: OpportunityLeadLabel;
+  regulatoryUrgency: OpportunityUrgency;
+  problemScore: number;
+  regulatoryExposureScore: number;
+  businessValueScore: number;
+  dataConfidenceScore: number;
+};
+
+export type OpportunityRecord = {
+  id: string;
+  siren: string;
+  scanId: string | null;
+  site: {
+    name: string;
+    domain: string | null;
+    url: string | null;
+    country: string;
+    sector: string | null;
+    siteType: OpportunitySiteType;
+  };
+  scan: {
+    scannedAt: string | null;
+    pagesScanned: number;
+    confidence: OpportunityConfidence;
+  };
+  signals: OpportunitySignal[];
+  scores: OpportunityScores;
+  recommendedOffer: {
+    primary: OpportunityOffer;
+    secondary: OpportunityOffer | null;
+    reason: string;
+  };
+  whyNow: string;
+  outreach: {
+    emailSubject: string;
+    emailBody: string;
+    linkedinMessage: string;
+  };
+  explanations: string[];
+  status: OpportunityStatus;
+  createdAt: string;
+  updatedAt: string;
+};
