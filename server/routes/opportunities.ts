@@ -1,0 +1,247 @@
+import { Router } from 'express';
+import { z } from 'zod';
+import { buildOpportunity, refreshOpportunity } from '../services/opportunity-engine.js';
+import {
+  getCompanyFromStorage,
+  getOpportunityById,
+  getOpportunityByScanId,
+  getScanById,
+  listOpportunities,
+  listScans,
+  saveOpportunity,
+  setOpportunityStatus,
+} from '../services/storage.js';
+import type { OpportunityRecord } from '../types.js';
+
+const router = Router();
+
+function ensureOpportunityForScan(scanId: string) {
+  const existing = getOpportunityByScanId(scanId);
+  if (existing) {
+    return existing;
+  }
+
+  const scan = getScanById(scanId);
+  if (!scan) {
+    return null;
+  }
+
+  const company = getCompanyFromStorage(scan.siren);
+  if (!company) {
+    return null;
+  }
+
+  return saveOpportunity(buildOpportunity(company, scan));
+}
+
+function ensureAllOpportunities() {
+  for (const scan of listScans()) {
+    ensureOpportunityForScan(scan.id);
+  }
+
+  return listOpportunities();
+}
+
+function toCsv(opportunities: OpportunityRecord[]) {
+  const headers = [
+    'id',
+    'site',
+    'domain',
+    'country',
+    'sector',
+    'site_type',
+    'lead_score',
+    'lead_label',
+    'regulatory_urgency',
+    'primary_offer',
+    'secondary_offer',
+    'confidence',
+    'status',
+    'why_now',
+    'email_subject',
+  ];
+
+  const escape = (value: string | number | null | undefined) =>
+    `"${String(value ?? '').replace(/"/g, '""')}"`;
+
+  const lines = opportunities.map((opportunity) =>
+    [
+      opportunity.id,
+      opportunity.site.name,
+      opportunity.site.domain,
+      opportunity.site.country,
+      opportunity.site.sector,
+      opportunity.site.siteType,
+      opportunity.scores.leadScore,
+      opportunity.scores.leadLabel,
+      opportunity.scores.regulatoryUrgency,
+      opportunity.recommendedOffer.primary,
+      opportunity.recommendedOffer.secondary,
+      opportunity.scan.confidence,
+      opportunity.status,
+      opportunity.whyNow,
+      opportunity.outreach.emailSubject,
+    ]
+      .map(escape)
+      .join(','),
+  );
+
+  return [headers.join(','), ...lines].join('\n');
+}
+
+router.get('/export', (req, res, next) => {
+  const schema = z.object({
+    format: z.enum(['json', 'csv']).optional().default('json'),
+    ids: z.string().optional(),
+  });
+
+  try {
+    const params = schema.parse(req.query);
+    const ids = new Set(
+      (params.ids ?? '')
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean),
+    );
+    const opportunities = ensureAllOpportunities().filter((opportunity) =>
+      ids.size === 0 ? true : ids.has(opportunity.id),
+    );
+
+    if (params.format === 'csv') {
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', 'attachment; filename="opportunities.csv"');
+      res.send(toCsv(opportunities));
+      return;
+    }
+
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="opportunities.json"');
+    res.send(JSON.stringify(opportunities, null, 2));
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/', (_req, res) => {
+  res.json({
+    success: true,
+    opportunities: ensureAllOpportunities(),
+  });
+});
+
+router.get('/:opportunityId', (req, res) => {
+  const opportunity =
+    getOpportunityById(req.params.opportunityId) ??
+    ensureOpportunityForScan(req.params.opportunityId.replace(/^opp_/, ''));
+
+  if (!opportunity) {
+    res.status(404).json({
+      success: false,
+      error: 'Opportunite introuvable',
+    });
+    return;
+  }
+
+  res.json({
+    success: true,
+    opportunity,
+  });
+});
+
+router.post('/:opportunityId/recompute', (req, res) => {
+  const opportunity = getOpportunityById(req.params.opportunityId);
+  if (!opportunity) {
+    res.status(404).json({
+      success: false,
+      error: 'Opportunite introuvable',
+    });
+    return;
+  }
+
+  if (!opportunity.scanId) {
+    res.status(400).json({
+      success: false,
+      error: 'Aucun scan source disponible pour recalculer cette opportunite',
+    });
+    return;
+  }
+
+  const scan = getScanById(opportunity.scanId);
+  const company = getCompanyFromStorage(opportunity.siren);
+  if (!scan || !company) {
+    res.status(404).json({
+      success: false,
+      error: 'Contexte source introuvable pour recalculer cette opportunite',
+    });
+    return;
+  }
+
+  const refreshed = saveOpportunity(refreshOpportunity(opportunity, company, scan));
+  res.json({
+    success: true,
+    opportunity: refreshed,
+  });
+});
+
+router.post('/:opportunityId/generate-outreach', (req, res) => {
+  const opportunity = getOpportunityById(req.params.opportunityId);
+  if (!opportunity) {
+    res.status(404).json({
+      success: false,
+      error: 'Opportunite introuvable',
+    });
+    return;
+  }
+
+  if (!opportunity.scanId) {
+    res.status(400).json({
+      success: false,
+      error: 'Aucun scan source disponible pour regenerer le message',
+    });
+    return;
+  }
+
+  const scan = getScanById(opportunity.scanId);
+  const company = getCompanyFromStorage(opportunity.siren);
+  if (!scan || !company) {
+    res.status(404).json({
+      success: false,
+      error: 'Contexte source introuvable pour regenerer le message',
+    });
+    return;
+  }
+
+  const refreshed = saveOpportunity(refreshOpportunity(opportunity, company, scan));
+  res.json({
+    success: true,
+    opportunity: refreshed,
+  });
+});
+
+router.patch('/:opportunityId/status', (req, res, next) => {
+  const schema = z.object({
+    status: z.enum(['new', 'reviewed', 'contacted', 'qualified', 'discarded']),
+  });
+
+  try {
+    const body = schema.parse(req.body);
+    const updated = setOpportunityStatus(req.params.opportunityId, body.status);
+
+    if (!updated) {
+      res.status(404).json({
+        success: false,
+        error: 'Opportunite introuvable',
+      });
+      return;
+    }
+
+    res.json({
+      success: true,
+      opportunity: updated,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+export default router;

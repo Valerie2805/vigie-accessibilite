@@ -1,4 +1,10 @@
-import type { Company, Scan, WebsiteResolution } from '@/types';
+import type {
+  Company,
+  Opportunity,
+  OpportunityStatus,
+  Scan,
+  WebsiteResolution,
+} from '@/types';
 
 async function request<T>(input: string, init?: RequestInit) {
   const response = await fetch(input, {
@@ -76,7 +82,7 @@ export async function resolveWebsite(siren: string, manualWebsite?: string) {
 }
 
 export async function createScan(siren: string, websiteUrl?: string) {
-  return request<{ scan: Scan; resolution: WebsiteResolution }>('/api/scans', {
+  return request<{ scan: Scan; opportunity: Opportunity | null; resolution: WebsiteResolution }>('/api/scans', {
     method: 'POST',
     body: JSON.stringify({
       siren,
@@ -100,4 +106,34 @@ export async function listRecentCompanies(limit?: number) {
   }
 
   return request<{ companies: Company[] }>(url.toString());
+}
+
+export async function listOpportunities() {
+  return request<{ opportunities: Opportunity[] }>('/api/opportunities');
+}
+
+export async function getOpportunity(opportunityId: string) {
+  return request<{ opportunity: Opportunity }>(`/api/opportunities/${opportunityId}`);
+}
+
+export async function recomputeOpportunity(opportunityId: string) {
+  return request<{ opportunity: Opportunity }>(`/api/opportunities/${opportunityId}/recompute`, {
+    method: 'POST',
+  });
+}
+
+export async function regenerateOpportunityOutreach(opportunityId: string) {
+  return request<{ opportunity: Opportunity }>(
+    `/api/opportunities/${opportunityId}/generate-outreach`,
+    {
+      method: 'POST',
+    },
+  );
+}
+
+export async function updateOpportunityStatus(opportunityId: string, status: OpportunityStatus) {
+  return request<{ opportunity: Opportunity }>(`/api/opportunities/${opportunityId}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  });
 }

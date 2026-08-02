@@ -3,10 +3,13 @@ import { z } from 'zod';
 import { scanWebsite } from '../services/accessibility-scanner.js';
 import { resolveCompanyEmail } from '../services/company-email-resolver.js';
 import { getCompanyBySiren } from '../services/company-search.js';
+import { buildOpportunity } from '../services/opportunity-engine.js';
 import { computeScore, estimateEligibility } from '../services/scoring.js';
 import {
+  getCompanyFromStorage,
   getScanById,
   listScans,
+  saveOpportunity,
   saveScan,
   setCompanyEmail,
   setCompanyWebsite,
@@ -95,9 +98,13 @@ router.post('/', async (req, res, next) => {
       notes: [...resolution.notes, ...scanResult.notes],
     });
 
+    const storedCompany = getCompanyFromStorage(company.siren);
+    const opportunity = storedCompany ? saveOpportunity(buildOpportunity(storedCompany, scan)) : null;
+
     res.status(201).json({
       success: true,
       scan,
+      opportunity,
       resolution,
     });
   } catch (error) {

@@ -7,6 +7,7 @@ import cors from 'cors'
 import dotenv from 'dotenv'
 import { ZodError } from 'zod'
 import companyRoutes from './routes/companies.js'
+import opportunityRoutes from './routes/opportunities.js'
 import scanRoutes from './routes/scans.js'
 
 // load env
@@ -22,6 +23,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }))
  * API Routes
  */
 app.use('/api/companies', companyRoutes)
+app.use('/api/opportunities', opportunityRoutes)
 app.use('/api/scans', scanRoutes)
 
 /**

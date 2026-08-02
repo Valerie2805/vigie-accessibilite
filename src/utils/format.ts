@@ -1,4 +1,12 @@
-import type { EligibilityStatus, ScanStatus } from '@/types';
+import type {
+  EligibilityStatus,
+  OpportunityConfidence,
+  OpportunityLeadLabel,
+  OpportunityOffer,
+  OpportunityStatus,
+  OpportunityUrgency,
+  ScanStatus,
+} from '@/types';
 
 const currencyFormatter = new Intl.NumberFormat('fr-FR', {
   style: 'currency',
@@ -44,5 +52,72 @@ export function getScanStatusLabel(status: ScanStatus) {
       return 'Conformite non demontree';
     default:
       return 'A verifier manuellement';
+  }
+}
+
+export function getOpportunityLeadLabel(label: OpportunityLeadLabel) {
+  switch (label) {
+    case 'chaud':
+      return 'Chaud';
+    case 'tiede':
+      return 'Tiede';
+    default:
+      return 'Froid';
+  }
+}
+
+export function getOpportunityUrgencyLabel(urgency: OpportunityUrgency) {
+  switch (urgency) {
+    case 'elevee':
+      return 'Elevee';
+    case 'moyenne':
+      return 'Moyenne';
+    default:
+      return 'Faible';
+  }
+}
+
+export function getOpportunityConfidenceLabel(confidence: OpportunityConfidence) {
+  switch (confidence) {
+    case 'high':
+      return 'Haute';
+    case 'medium':
+      return 'Moyenne';
+    default:
+      return 'Faible';
+  }
+}
+
+export function getOpportunityStatusLabel(status: OpportunityStatus) {
+  switch (status) {
+    case 'new':
+      return 'Nouveau';
+    case 'reviewed':
+      return 'Revu';
+    case 'contacted':
+      return 'Contacte';
+    case 'qualified':
+      return 'Qualifie';
+    default:
+      return 'Ecarte';
+  }
+}
+
+export function getOpportunityOfferLabel(offer: OpportunityOffer) {
+  switch (offer) {
+    case 'audit_flash':
+      return 'Audit flash';
+    case 'audit_complet':
+      return 'Audit complet';
+    case 'audit_complet_plus_remediation':
+      return 'Audit complet + remediation';
+    case 'mise_en_conformite_rgaa_eaa':
+      return 'Mise en conformite RGAA / EAA';
+    case 'monitoring_continu':
+      return 'Monitoring continu';
+    case 'formation_plus_accompagnement':
+      return 'Formation + accompagnement';
+    default:
+      return 'Audit design system / front';
   }
 }

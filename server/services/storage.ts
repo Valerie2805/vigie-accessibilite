@@ -1,10 +1,18 @@
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
-import type { CompanyRecord, CompanySearchResult, ScanRecord, WebsiteResolution } from '../types.js';
+import type {
+  CompanyRecord,
+  CompanySearchResult,
+  OpportunityRecord,
+  OpportunityStatus,
+  ScanRecord,
+  WebsiteResolution,
+} from '../types.js';
 
 type StorageShape = {
   scans: ScanRecord[];
   companies: CompanyRecord[];
+  opportunities: OpportunityRecord[];
 };
 
 const dataDirectory = path.resolve(process.cwd(), 'data');
@@ -12,6 +20,7 @@ const dataFilePath = path.join(dataDirectory, 'scans.json');
 let memoryStorage: StorageShape = {
   scans: [],
   companies: [],
+  opportunities: [],
 };
 
 function ensureStorageFile() {
@@ -21,7 +30,10 @@ function ensureStorageFile() {
     }
 
     if (!existsSync(dataFilePath)) {
-      writeFileSync(dataFilePath, JSON.stringify({ scans: [], companies: [] }, null, 2));
+      writeFileSync(
+        dataFilePath,
+        JSON.stringify({ scans: [], companies: [], opportunities: [] }, null, 2),
+      );
     }
 
     return true;
@@ -50,6 +62,12 @@ function readStorage(): StorageShape {
         emailSource: company.emailSource ?? 'inconnue',
         emailNotes: company.emailNotes ?? [],
         lastSeenAt: company.lastSeenAt ?? new Date().toISOString(),
+      })),
+      opportunities: (parsed.opportunities ?? []).map((opportunity) => ({
+        ...opportunity,
+        status: opportunity.status ?? 'new',
+        createdAt: opportunity.createdAt ?? new Date().toISOString(),
+        updatedAt: opportunity.updatedAt ?? new Date().toISOString(),
       })),
     };
     memoryStorage = normalized;
@@ -205,4 +223,38 @@ export function getScanById(scanId: string) {
 
 export function listScans() {
   return readStorage().scans;
+}
+
+export function saveOpportunity(opportunity: OpportunityRecord) {
+  const storage = readStorage();
+  const existing = storage.opportunities.filter((item) => item.id !== opportunity.id);
+  storage.opportunities = [opportunity, ...existing].sort((a, b) =>
+    b.updatedAt.localeCompare(a.updatedAt),
+  );
+  writeStorage(storage);
+  return opportunity;
+}
+
+export function getOpportunityById(opportunityId: string) {
+  return readStorage().opportunities.find((opportunity) => opportunity.id === opportunityId) ?? null;
+}
+
+export function getOpportunityByScanId(scanId: string) {
+  return readStorage().opportunities.find((opportunity) => opportunity.scanId === scanId) ?? null;
+}
+
+export function listOpportunities() {
+  return readStorage().opportunities
+    .slice()
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+export function setOpportunityStatus(opportunityId: string, status: OpportunityStatus) {
+  const storage = readStorage();
+  const now = new Date().toISOString();
+  storage.opportunities = storage.opportunities.map((opportunity) =>
+    opportunity.id === opportunityId ? { ...opportunity, status, updatedAt: now } : opportunity,
+  );
+  writeStorage(storage);
+  return storage.opportunities.find((opportunity) => opportunity.id === opportunityId) ?? null;
 }
