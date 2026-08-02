@@ -1,10 +1,11 @@
-import { Building2, History, Radar, Search, ShieldAlert } from 'lucide-react';
+import { Building2, History, Radar, Search, ShieldAlert, Target } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import type { ReactNode } from 'react';
 
 const navigation = [
   { to: '/', label: 'Recherche', icon: Search },
+  { to: '/opportunites', label: 'Opportunites', icon: Target },
   { to: '/historique', label: 'Historique', icon: History },
 ];
 
