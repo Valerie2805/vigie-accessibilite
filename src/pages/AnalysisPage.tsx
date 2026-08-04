@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, FileSearch, Globe, Radar, ScrollText } from 'lucide-react';
+import { AlertTriangle, Download, FileSearch, Globe, Radar, ScrollText } from 'lucide-react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { AppShell } from '@/components/AppShell';
 import { EvidenceList } from '@/components/EvidenceList';
 import { MetricCard } from '@/components/MetricCard';
 import { StatusBadge } from '@/components/StatusBadge';
 import type { AxeImpact, OpportunitySignalCategory, Scan } from '@/types';
+import { exportAnalysisToPdf } from '@/utils/export-analysis-pdf';
 import { getScan } from '@/utils/api';
 import { formatDate } from '@/utils/format';
 
@@ -56,6 +57,7 @@ export default function AnalysisPage() {
   const [scan, setScan] = useState<Scan | null>(initialScan);
   const [loading, setLoading] = useState(!initialScan);
   const [error, setError] = useState<string | null>(null);
+  const [exportingPdf, setExportingPdf] = useState(false);
   const axeSummary = scan?.axe ?? null;
   const highImpactCount = useMemo(() => {
     if (!axeSummary) {
@@ -89,6 +91,26 @@ export default function AnalysisPage() {
     loadScan();
   }, [initialScan, scanId]);
 
+  async function handleExportPdf() {
+    if (!scan) {
+      return;
+    }
+
+    setExportingPdf(true);
+
+    try {
+      exportAnalysisToPdf(scan);
+    } catch (exportError) {
+      setError(
+        exportError instanceof Error
+          ? exportError.message
+          : "Impossible d'ouvrir l'export PDF.",
+      );
+    } finally {
+      setExportingPdf(false);
+    }
+  }
+
   return (
     <AppShell
       eyebrow="Resultat d'analyse"
@@ -113,6 +135,15 @@ export default function AnalysisPage() {
             <h2 className="font-display text-3xl text-ivory">{scan.companyName}</h2>
             <StatusBadge status={scan.status} type="scan" />
             <StatusBadge status={scan.eligibility} type="eligibility" />
+            <button
+              type="button"
+              onClick={handleExportPdf}
+              disabled={exportingPdf}
+              className="inline-flex items-center gap-2 rounded-full border border-copper/40 bg-copper/10 px-4 py-2 text-sm text-copper-soft transition hover:border-copper hover:bg-copper hover:text-ink disabled:opacity-50"
+            >
+              <Download className="h-4 w-4" />
+              {exportingPdf ? 'Preparation du PDF...' : 'Exporter en PDF'}
+            </button>
           </div>
 
           <section className="grid gap-4 xl:grid-cols-4">
