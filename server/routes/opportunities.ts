@@ -15,18 +15,18 @@ import type { OpportunityRecord } from '../types.js';
 
 const router = Router();
 
-function ensureOpportunityForScan(scanId: string) {
-  const existing = getOpportunityByScanId(scanId);
+async function ensureOpportunityForScan(scanId: string) {
+  const existing = await getOpportunityByScanId(scanId);
   if (existing) {
     return existing;
   }
 
-  const scan = getScanById(scanId);
+  const scan = await getScanById(scanId);
   if (!scan) {
     return null;
   }
 
-  const company = getCompanyFromStorage(scan.siren);
+  const company = await getCompanyFromStorage(scan.siren);
   if (!company) {
     return null;
   }
@@ -34,9 +34,9 @@ function ensureOpportunityForScan(scanId: string) {
   return saveOpportunity(buildOpportunity(company, scan));
 }
 
-function ensureAllOpportunities() {
-  for (const scan of listScans()) {
-    ensureOpportunityForScan(scan.id);
+async function ensureAllOpportunities() {
+  for (const scan of await listScans()) {
+    await ensureOpportunityForScan(scan.id);
   }
 
   return listOpportunities();
@@ -89,7 +89,7 @@ function toCsv(opportunities: OpportunityRecord[]) {
   return [headers.join(','), ...lines].join('\n');
 }
 
-router.get('/export', (req, res, next) => {
+router.get('/export', async (req, res, next) => {
   const schema = z.object({
     format: z.enum(['json', 'csv']).optional().default('json'),
     ids: z.string().optional(),
@@ -103,7 +103,7 @@ router.get('/export', (req, res, next) => {
         .map((item) => item.trim())
         .filter(Boolean),
     );
-    const opportunities = ensureAllOpportunities().filter((opportunity) =>
+    const opportunities = (await ensureAllOpportunities()).filter((opportunity) =>
       ids.size === 0 ? true : ids.has(opportunity.id),
     );
 
@@ -122,17 +122,17 @@ router.get('/export', (req, res, next) => {
   }
 });
 
-router.get('/', (_req, res) => {
+router.get('/', async (_req, res) => {
   res.json({
     success: true,
-    opportunities: ensureAllOpportunities(),
+    opportunities: await ensureAllOpportunities(),
   });
 });
 
-router.get('/:opportunityId', (req, res) => {
+router.get('/:opportunityId', async (req, res) => {
   const opportunity =
-    getOpportunityById(req.params.opportunityId) ??
-    ensureOpportunityForScan(req.params.opportunityId.replace(/^opp_/, ''));
+    (await getOpportunityById(req.params.opportunityId)) ??
+    (await ensureOpportunityForScan(req.params.opportunityId.replace(/^opp_/, '')));
 
   if (!opportunity) {
     res.status(404).json({
@@ -148,8 +148,8 @@ router.get('/:opportunityId', (req, res) => {
   });
 });
 
-router.post('/:opportunityId/recompute', (req, res) => {
-  const opportunity = getOpportunityById(req.params.opportunityId);
+router.post('/:opportunityId/recompute', async (req, res) => {
+  const opportunity = await getOpportunityById(req.params.opportunityId);
   if (!opportunity) {
     res.status(404).json({
       success: false,
@@ -166,8 +166,8 @@ router.post('/:opportunityId/recompute', (req, res) => {
     return;
   }
 
-  const scan = getScanById(opportunity.scanId);
-  const company = getCompanyFromStorage(opportunity.siren);
+  const scan = await getScanById(opportunity.scanId);
+  const company = await getCompanyFromStorage(opportunity.siren);
   if (!scan || !company) {
     res.status(404).json({
       success: false,
@@ -176,15 +176,15 @@ router.post('/:opportunityId/recompute', (req, res) => {
     return;
   }
 
-  const refreshed = saveOpportunity(refreshOpportunity(opportunity, company, scan));
+  const refreshed = await saveOpportunity(refreshOpportunity(opportunity, company, scan));
   res.json({
     success: true,
     opportunity: refreshed,
   });
 });
 
-router.post('/:opportunityId/generate-outreach', (req, res) => {
-  const opportunity = getOpportunityById(req.params.opportunityId);
+router.post('/:opportunityId/generate-outreach', async (req, res) => {
+  const opportunity = await getOpportunityById(req.params.opportunityId);
   if (!opportunity) {
     res.status(404).json({
       success: false,
@@ -201,8 +201,8 @@ router.post('/:opportunityId/generate-outreach', (req, res) => {
     return;
   }
 
-  const scan = getScanById(opportunity.scanId);
-  const company = getCompanyFromStorage(opportunity.siren);
+  const scan = await getScanById(opportunity.scanId);
+  const company = await getCompanyFromStorage(opportunity.siren);
   if (!scan || !company) {
     res.status(404).json({
       success: false,
@@ -211,21 +211,21 @@ router.post('/:opportunityId/generate-outreach', (req, res) => {
     return;
   }
 
-  const refreshed = saveOpportunity(refreshOpportunity(opportunity, company, scan));
+  const refreshed = await saveOpportunity(refreshOpportunity(opportunity, company, scan));
   res.json({
     success: true,
     opportunity: refreshed,
   });
 });
 
-router.patch('/:opportunityId/status', (req, res, next) => {
+router.patch('/:opportunityId/status', async (req, res, next) => {
   const schema = z.object({
     status: z.enum(['new', 'reviewed', 'contacted', 'qualified', 'discarded']),
   });
 
   try {
     const body = schema.parse(req.body);
-    const updated = setOpportunityStatus(req.params.opportunityId, body.status);
+    const updated = await setOpportunityStatus(req.params.opportunityId, body.status);
 
     if (!updated) {
       res.status(404).json({

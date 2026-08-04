@@ -15,13 +15,55 @@ type StorageShape = {
   opportunities: OpportunityRecord[];
 };
 
+type SupabaseCompanyRow = {
+  siren: string;
+  payload: CompanyRecord;
+  website_url: string | null;
+  email: string | null;
+  last_seen_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type SupabaseScanRow = {
+  id: string;
+  siren: string;
+  company_name: string;
+  website_url: string;
+  score: number;
+  status: string;
+  eligibility: string;
+  scanned_at: string;
+  payload: ScanRecord;
+  created_at: string;
+};
+
+type SupabaseOpportunityRow = {
+  id: string;
+  scan_id: string | null;
+  siren: string;
+  lead_score: number;
+  regulatory_urgency: string;
+  status: string;
+  primary_offer: string | null;
+  payload: OpportunityRecord;
+  created_at: string;
+  updated_at: string;
+};
+
 const dataDirectory = path.resolve(process.cwd(), 'data');
 const dataFilePath = path.join(dataDirectory, 'scans.json');
+const supabaseUrl = process.env.SUPABASE_URL?.trim() ?? '';
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ?? '';
 let memoryStorage: StorageShape = {
   scans: [],
   companies: [],
   opportunities: [],
 };
+
+function isSupabaseConfigured() {
+  return Boolean(supabaseUrl && supabaseServiceRoleKey);
+}
 
 function ensureStorageFile() {
   try {
@@ -42,7 +84,86 @@ function ensureStorageFile() {
   }
 }
 
-function readStorage(): StorageShape {
+function normalizeCompanyRecord(company: Partial<CompanyRecord>): CompanyRecord {
+  return {
+    siren: company.siren ?? '',
+    nom: company.nom ?? '',
+    ville: company.ville ?? null,
+    codePostal: company.codePostal ?? null,
+    activite: company.activite ?? null,
+    categorieEntreprise: company.categorieEntreprise ?? null,
+    trancheEffectif: company.trancheEffectif ?? null,
+    adresse: company.adresse ?? null,
+    chiffreAffaires: company.chiffreAffaires ?? null,
+    source: company.source ?? 'demo',
+    websiteUrl: company.websiteUrl ?? null,
+    websiteSource: company.websiteSource ?? 'inconnue',
+    websiteConfidence: company.websiteConfidence ?? 'faible',
+    websiteNotes: company.websiteNotes ?? [],
+    email: company.email ?? null,
+    emailSource: company.emailSource ?? 'inconnue',
+    emailNotes: company.emailNotes ?? [],
+    lastSeenAt: company.lastSeenAt ?? new Date().toISOString(),
+  };
+}
+
+function normalizeOpportunityRecord(opportunity: Partial<OpportunityRecord>): OpportunityRecord {
+  return {
+    id: opportunity.id ?? '',
+    siren: opportunity.siren ?? '',
+    scanId: opportunity.scanId ?? null,
+    site: {
+      name: opportunity.site?.name ?? '',
+      domain: opportunity.site?.domain ?? null,
+      url: opportunity.site?.url ?? null,
+      country: opportunity.site?.country ?? 'FR',
+      sector: opportunity.site?.sector ?? null,
+      siteType: opportunity.site?.siteType ?? 'unknown',
+    },
+    scan: {
+      scannedAt: opportunity.scan?.scannedAt ?? null,
+      pagesScanned: opportunity.scan?.pagesScanned ?? 0,
+      confidence: opportunity.scan?.confidence ?? 'low',
+    },
+    signals: opportunity.signals ?? [],
+    scores: {
+      leadScore: opportunity.scores?.leadScore ?? 0,
+      leadLabel: opportunity.scores?.leadLabel ?? 'froid',
+      regulatoryUrgency: opportunity.scores?.regulatoryUrgency ?? 'faible',
+      problemScore: opportunity.scores?.problemScore ?? 0,
+      regulatoryExposureScore: opportunity.scores?.regulatoryExposureScore ?? 0,
+      businessValueScore: opportunity.scores?.businessValueScore ?? 0,
+      dataConfidenceScore: opportunity.scores?.dataConfidenceScore ?? 0,
+    },
+    recommendedOffer: {
+      primary: opportunity.recommendedOffer?.primary ?? 'audit_flash',
+      secondary: opportunity.recommendedOffer?.secondary ?? null,
+      reason: opportunity.recommendedOffer?.reason ?? '',
+    },
+    whyNow: opportunity.whyNow ?? '',
+    outreach: {
+      emailSubject: opportunity.outreach?.emailSubject ?? '',
+      emailBody: opportunity.outreach?.emailBody ?? '',
+      linkedinMessage: opportunity.outreach?.linkedinMessage ?? '',
+    },
+    explanations: opportunity.explanations ?? [],
+    status: opportunity.status ?? 'new',
+    createdAt: opportunity.createdAt ?? new Date().toISOString(),
+    updatedAt: opportunity.updatedAt ?? new Date().toISOString(),
+  };
+}
+
+function normalizeStorage(parsed: Partial<StorageShape>): StorageShape {
+  return {
+    scans: (parsed.scans ?? []) as ScanRecord[],
+    companies: (parsed.companies ?? []).map((company) => normalizeCompanyRecord(company)),
+    opportunities: (parsed.opportunities ?? []).map((opportunity) =>
+      normalizeOpportunityRecord(opportunity),
+    ),
+  };
+}
+
+function readStorageFromFile(): StorageShape {
   if (!ensureStorageFile()) {
     return memoryStorage;
   }
@@ -50,26 +171,7 @@ function readStorage(): StorageShape {
   try {
     const raw = readFileSync(dataFilePath, 'utf-8');
     const parsed = JSON.parse(raw) as Partial<StorageShape>;
-    const normalized: StorageShape = {
-      scans: parsed.scans ?? [],
-      companies: (parsed.companies ?? []).map((company) => ({
-        ...company,
-        websiteUrl: company.websiteUrl ?? null,
-        websiteSource: company.websiteSource ?? 'inconnue',
-        websiteConfidence: company.websiteConfidence ?? 'faible',
-        websiteNotes: company.websiteNotes ?? [],
-        email: company.email ?? null,
-        emailSource: company.emailSource ?? 'inconnue',
-        emailNotes: company.emailNotes ?? [],
-        lastSeenAt: company.lastSeenAt ?? new Date().toISOString(),
-      })),
-      opportunities: (parsed.opportunities ?? []).map((opportunity) => ({
-        ...opportunity,
-        status: opportunity.status ?? 'new',
-        createdAt: opportunity.createdAt ?? new Date().toISOString(),
-        updatedAt: opportunity.updatedAt ?? new Date().toISOString(),
-      })),
-    };
+    const normalized = normalizeStorage(parsed);
     memoryStorage = normalized;
     return normalized;
   } catch {
@@ -77,7 +179,7 @@ function readStorage(): StorageShape {
   }
 }
 
-function writeStorage(payload: StorageShape) {
+function writeStorageToFile(payload: StorageShape) {
   memoryStorage = payload;
   if (!ensureStorageFile()) {
     return;
@@ -88,6 +190,162 @@ function writeStorage(payload: StorageShape) {
   } catch {
     // On Vercel serverless, filesystem may be read-only. We keep data in memory for the runtime.
   }
+}
+
+async function supabaseRequest<T>(table: string, init?: RequestInit, searchParams?: URLSearchParams) {
+  const url = new URL(`/rest/v1/${table}`, supabaseUrl);
+  if (searchParams) {
+    url.search = searchParams.toString();
+  }
+
+  const response = await fetch(url, {
+    ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      apikey: supabaseServiceRoleKey,
+      Authorization: `Bearer ${supabaseServiceRoleKey}`,
+      ...(init?.headers ?? {}),
+    },
+  });
+
+  if (!response.ok) {
+    const details = await response.text();
+    throw new Error(`Supabase request failed (${response.status}): ${details}`);
+  }
+
+  if (response.status === 204) {
+    return null as T;
+  }
+
+  return (await response.json()) as T;
+}
+
+async function readStorageFromSupabase(): Promise<StorageShape> {
+  const companyParams = new URLSearchParams({
+    select: 'payload',
+    order: 'last_seen_at.desc',
+    limit: '200',
+  });
+  const scanParams = new URLSearchParams({
+    select: 'payload',
+    order: 'scanned_at.desc',
+    limit: '100',
+  });
+  const opportunityParams = new URLSearchParams({
+    select: 'payload',
+    order: 'updated_at.desc',
+    limit: '200',
+  });
+
+  const [companyRows, scanRows, opportunityRows] = await Promise.all([
+    supabaseRequest<Array<Pick<SupabaseCompanyRow, 'payload'>>>('vigie_companies', undefined, companyParams),
+    supabaseRequest<Array<Pick<SupabaseScanRow, 'payload'>>>('vigie_scans', undefined, scanParams),
+    supabaseRequest<Array<Pick<SupabaseOpportunityRow, 'payload'>>>(
+      'vigie_opportunities',
+      undefined,
+      opportunityParams,
+    ),
+  ]);
+
+  const storage = normalizeStorage({
+    companies: companyRows.map((row) => row.payload),
+    scans: scanRows.map((row) => row.payload),
+    opportunities: opportunityRows.map((row) => row.payload),
+  });
+  memoryStorage = storage;
+  return storage;
+}
+
+async function readStorage(): Promise<StorageShape> {
+  if (isSupabaseConfigured()) {
+    return readStorageFromSupabase();
+  }
+
+  return readStorageFromFile();
+}
+
+async function writeStorage(payload: StorageShape) {
+  memoryStorage = payload;
+
+  if (!isSupabaseConfigured()) {
+    writeStorageToFile(payload);
+    return;
+  }
+
+  await Promise.all([
+    payload.companies.length > 0
+      ? supabaseRequest<SupabaseCompanyRow[]>(
+          'vigie_companies',
+          {
+            method: 'POST',
+            headers: {
+              Prefer: 'resolution=merge-duplicates,return=minimal',
+            },
+            body: JSON.stringify(
+              payload.companies.map((company) => ({
+                siren: company.siren,
+                payload: company,
+                website_url: company.websiteUrl,
+                email: company.email,
+                last_seen_at: company.lastSeenAt,
+                updated_at: new Date().toISOString(),
+              })),
+            ),
+          },
+          new URLSearchParams({ on_conflict: 'siren' }),
+        )
+      : Promise.resolve(null),
+    payload.scans.length > 0
+      ? supabaseRequest<SupabaseScanRow[]>(
+          'vigie_scans',
+          {
+            method: 'POST',
+            headers: {
+              Prefer: 'resolution=merge-duplicates,return=minimal',
+            },
+            body: JSON.stringify(
+              payload.scans.map((scan) => ({
+                id: scan.id,
+                siren: scan.siren,
+                company_name: scan.companyName,
+                website_url: scan.websiteUrl,
+                score: scan.score,
+                status: scan.status,
+                eligibility: scan.eligibility,
+                scanned_at: scan.scannedAt,
+                payload: scan,
+              })),
+            ),
+          },
+          new URLSearchParams({ on_conflict: 'id' }),
+        )
+      : Promise.resolve(null),
+    payload.opportunities.length > 0
+      ? supabaseRequest<SupabaseOpportunityRow[]>(
+          'vigie_opportunities',
+          {
+            method: 'POST',
+            headers: {
+              Prefer: 'resolution=merge-duplicates,return=minimal',
+            },
+            body: JSON.stringify(
+              payload.opportunities.map((opportunity) => ({
+                id: opportunity.id,
+                scan_id: opportunity.scanId,
+                siren: opportunity.siren,
+                lead_score: opportunity.scores.leadScore,
+                regulatory_urgency: opportunity.scores.regulatoryUrgency,
+                status: opportunity.status,
+                primary_offer: opportunity.recommendedOffer.primary,
+                payload: opportunity,
+                updated_at: opportunity.updatedAt,
+              })),
+            ),
+          },
+          new URLSearchParams({ on_conflict: 'id' }),
+        )
+      : Promise.resolve(null),
+  ]);
 }
 
 function toCompanyRecord(company: CompanySearchResult): CompanyRecord {
@@ -104,8 +362,18 @@ function toCompanyRecord(company: CompanySearchResult): CompanyRecord {
   };
 }
 
-export function upsertCompaniesFromSearch(companies: CompanySearchResult[]) {
-  const storage = readStorage();
+async function saveCompanyRecord(company: CompanyRecord) {
+  const storage = await readStorage();
+  const existing = storage.companies.filter((item) => item.siren !== company.siren);
+  storage.companies = [company, ...existing]
+    .sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt))
+    .slice(0, 200);
+  await writeStorage(storage);
+  return company;
+}
+
+export async function upsertCompaniesFromSearch(companies: CompanySearchResult[]) {
+  const storage = await readStorage();
   const now = new Date().toISOString();
 
   const bySiren = new Map(storage.companies.map((company) => [company.siren, company]));
@@ -130,131 +398,115 @@ export function upsertCompaniesFromSearch(companies: CompanySearchResult[]) {
     .sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt))
     .slice(0, 200);
 
-  writeStorage(storage);
+  await writeStorage(storage);
   return storage.companies;
 }
 
-export function setCompanyWebsite(siren: string, resolution: WebsiteResolution) {
-  const storage = readStorage();
-  const now = new Date().toISOString();
+export async function setCompanyWebsite(siren: string, resolution: WebsiteResolution) {
+  const company = await getCompanyFromStorage(siren);
+  if (!company) {
+    return null;
+  }
 
-  const updatedCompanies = storage.companies.map((company) => {
-    if (company.siren !== siren) {
-      return company;
-    }
-
-    return {
-      ...company,
-      websiteUrl: resolution.websiteUrl,
-      websiteSource: resolution.source,
-      websiteConfidence: resolution.confidence,
-      websiteNotes: resolution.notes,
-      lastSeenAt: now,
-    };
+  const updatedCompany = await saveCompanyRecord({
+    ...company,
+    websiteUrl: resolution.websiteUrl,
+    websiteSource: resolution.source,
+    websiteConfidence: resolution.confidence,
+    websiteNotes: resolution.notes,
+    lastSeenAt: new Date().toISOString(),
   });
-
-  storage.companies = updatedCompanies
-    .sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt))
-    .slice(0, 200);
-
-  writeStorage(storage);
-  return storage.companies.find((company) => company.siren === siren) ?? null;
+  return updatedCompany;
 }
 
-export function setCompanyEmail(
+export async function setCompanyEmail(
   siren: string,
   email: string | null,
   source: CompanyRecord['emailSource'],
   notes: string[],
 ) {
-  const storage = readStorage();
+  const company = await getCompanyFromStorage(siren);
+  if (!company) {
+    return null;
+  }
+
   const now = new Date().toISOString();
+  const updatedCompany =
+    email === company.email && source === company.emailSource
+      ? { ...company, lastSeenAt: now }
+      : {
+          ...company,
+          email,
+          emailSource: source,
+          emailNotes: notes,
+          lastSeenAt: now,
+        };
 
-  const updatedCompanies = storage.companies.map((company) => {
-    if (company.siren !== siren) {
-      return company;
-    }
-
-    if (email === company.email && source === company.emailSource) {
-      return {
-        ...company,
-        lastSeenAt: now,
-      };
-    }
-
-    return {
-      ...company,
-      email,
-      emailSource: source,
-      emailNotes: notes,
-      lastSeenAt: now,
-    };
-  });
-
-  storage.companies = updatedCompanies
-    .sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt))
-    .slice(0, 200);
-
-  writeStorage(storage);
-  return storage.companies.find((company) => company.siren === siren) ?? null;
+  return saveCompanyRecord(updatedCompany);
 }
 
-export function getCompanyFromStorage(siren: string) {
-  return readStorage().companies.find((company) => company.siren === siren) ?? null;
+export async function getCompanyFromStorage(siren: string) {
+  return (await readStorage()).companies.find((company) => company.siren === siren) ?? null;
 }
 
-export function listCompanies(limit = 50) {
-  return readStorage().companies
+export async function listCompanies(limit = 50) {
+  return (await readStorage()).companies
     .slice()
     .sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt))
     .slice(0, limit);
 }
 
-export function saveScan(scan: ScanRecord) {
-  const storage = readStorage();
+export async function saveScan(scan: ScanRecord) {
+  const storage = await readStorage();
   storage.scans = [scan, ...storage.scans.filter((item) => item.id !== scan.id)].slice(0, 40);
-  writeStorage(storage);
+  await writeStorage(storage);
   return scan;
 }
 
-export function getScanById(scanId: string) {
-  return readStorage().scans.find((scan) => scan.id === scanId) ?? null;
+export async function getScanById(scanId: string) {
+  return (await readStorage()).scans.find((scan) => scan.id === scanId) ?? null;
 }
 
-export function listScans() {
-  return readStorage().scans;
+export async function listScans() {
+  return (await readStorage()).scans;
 }
 
-export function saveOpportunity(opportunity: OpportunityRecord) {
-  const storage = readStorage();
+export async function saveOpportunity(opportunity: OpportunityRecord) {
+  const storage = await readStorage();
   const existing = storage.opportunities.filter((item) => item.id !== opportunity.id);
   storage.opportunities = [opportunity, ...existing].sort((a, b) =>
     b.updatedAt.localeCompare(a.updatedAt),
   );
-  writeStorage(storage);
+  await writeStorage(storage);
   return opportunity;
 }
 
-export function getOpportunityById(opportunityId: string) {
-  return readStorage().opportunities.find((opportunity) => opportunity.id === opportunityId) ?? null;
+export async function getOpportunityById(opportunityId: string) {
+  return (
+    (await readStorage()).opportunities.find((opportunity) => opportunity.id === opportunityId) ??
+    null
+  );
 }
 
-export function getOpportunityByScanId(scanId: string) {
-  return readStorage().opportunities.find((opportunity) => opportunity.scanId === scanId) ?? null;
+export async function getOpportunityByScanId(scanId: string) {
+  return (
+    (await readStorage()).opportunities.find((opportunity) => opportunity.scanId === scanId) ??
+    null
+  );
 }
 
-export function listOpportunities() {
-  return readStorage().opportunities
+export async function listOpportunities() {
+  return (await readStorage()).opportunities
     .slice()
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
-export function setOpportunityStatus(opportunityId: string, status: OpportunityStatus) {
-  const storage = readStorage();
+export async function setOpportunityStatus(opportunityId: string, status: OpportunityStatus) {
+  const storage = await readStorage();
   const now = new Date().toISOString();
   storage.opportunities = storage.opportunities.map((opportunity) =>
     opportunity.id === opportunityId ? { ...opportunity, status, updatedAt: now } : opportunity,
   );
-  writeStorage(storage);
+  await writeStorage(storage);
   return storage.opportunities.find((opportunity) => opportunity.id === opportunityId) ?? null;
 }

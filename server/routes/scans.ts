@@ -19,15 +19,15 @@ import { resolveWebsite } from '../services/website-resolver.js';
 
 const router = Router();
 
-router.get('/', (_req, res) => {
+router.get('/', async (_req, res) => {
   res.json({
     success: true,
-    scans: listScans(),
+    scans: await listScans(),
   });
 });
 
-router.get('/:scanId', (req, res) => {
-  const scan = getScanById(req.params.scanId);
+router.get('/:scanId', async (req, res) => {
+  const scan = await getScanById(req.params.scanId);
   if (!scan) {
     res.status(404).json({
       success: false,
@@ -61,8 +61,8 @@ router.post('/', async (req, res, next) => {
 
     const eligibility = estimateEligibility(company);
     const resolution = await resolveWebsite(company, body.websiteUrl || undefined);
-    upsertCompaniesFromSearch([company]);
-    setCompanyWebsite(company.siren, resolution);
+    await upsertCompaniesFromSearch([company]);
+    await setCompanyWebsite(company.siren, resolution);
 
     if (!resolution.websiteUrl) {
       res.status(400).json({
@@ -75,7 +75,7 @@ router.post('/', async (req, res, next) => {
 
     const contacts = await resolveCompanyEmail(resolution.websiteUrl);
     if (contacts.email) {
-      setCompanyEmail(company.siren, contacts.email, contacts.source, contacts.notes);
+      await setCompanyEmail(company.siren, contacts.email, contacts.source, contacts.notes);
     }
 
     const scanResult = await scanWebsite(resolution.websiteUrl);
@@ -85,7 +85,7 @@ router.post('/', async (req, res, next) => {
       Boolean(resolution.websiteUrl),
     );
 
-    const scan = saveScan({
+    const scan = await saveScan({
       id: crypto.randomUUID(),
       siren: company.siren,
       companyName: company.nom,
@@ -98,8 +98,10 @@ router.post('/', async (req, res, next) => {
       notes: [...resolution.notes, ...scanResult.notes],
     });
 
-    const storedCompany = getCompanyFromStorage(company.siren);
-    const opportunity = storedCompany ? saveOpportunity(buildOpportunity(storedCompany, scan)) : null;
+    const storedCompany = await getCompanyFromStorage(company.siren);
+    const opportunity = storedCompany
+      ? await saveOpportunity(buildOpportunity(storedCompany, scan))
+      : null;
 
     res.status(201).json({
       success: true,

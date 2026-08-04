@@ -15,10 +15,10 @@ import { resolveWebsite } from '../services/website-resolver.js';
 
 const router = Router();
 
-function getLatestScanIndex() {
+async function getLatestScanIndex() {
   const bySiren = new Map<string, { status: string; scannedAt: string }>();
 
-  for (const scan of listScans()) {
+  for (const scan of await listScans()) {
     const existing = bySiren.get(scan.siren);
     if (!existing || existing.scannedAt < scan.scannedAt) {
       bySiren.set(scan.siren, {
@@ -58,9 +58,9 @@ router.get('/search', async (req, res, next) => {
       params.maxRevenue,
     );
 
-    const storedCompanies = upsertCompaniesFromSearch(results);
+    const storedCompanies = await upsertCompaniesFromSearch(results);
     const storedIndex = new Map(storedCompanies.map((company) => [company.siren, company]));
-    const latestScanIndex = getLatestScanIndex();
+    const latestScanIndex = await getLatestScanIndex();
 
     res.json({
       success: true,
@@ -80,15 +80,15 @@ router.get('/search', async (req, res, next) => {
   }
 });
 
-router.get('/recent', (req, res, next) => {
+router.get('/recent', async (req, res, next) => {
   const schema = z.object({
     limit: z.coerce.number().int().positive().max(200).optional(),
   });
 
   try {
     const params = schema.parse(req.query);
-    const companies = listCompanies(params.limit ?? 50);
-    const latestScanIndex = getLatestScanIndex();
+    const companies = await listCompanies(params.limit ?? 50);
+    const latestScanIndex = await getLatestScanIndex();
     res.json({
       success: true,
       companies: companies.map((company) => ({
@@ -114,9 +114,9 @@ router.get('/:siren', async (req, res, next) => {
       return;
     }
 
-    upsertCompaniesFromSearch([company]);
-    const stored = getCompanyFromStorage(company.siren);
-    const latestScanIndex = getLatestScanIndex();
+    await upsertCompaniesFromSearch([company]);
+    const stored = await getCompanyFromStorage(company.siren);
+    const latestScanIndex = await getLatestScanIndex();
 
     res.json({
       success: true,
@@ -154,9 +154,9 @@ router.post('/resolve-website', async (req, res, next) => {
     }
 
     const resolution = await resolveWebsite(company, body.manualWebsite || undefined);
-    upsertCompaniesFromSearch([company]);
-    setCompanyWebsite(company.siren, resolution);
-    const stored = getCompanyFromStorage(company.siren);
+    await upsertCompaniesFromSearch([company]);
+    await setCompanyWebsite(company.siren, resolution);
+    const stored = await getCompanyFromStorage(company.siren);
 
     let emailNotes: string[] = [];
     let emailSource: 'site' | 'snov' | 'inconnue' = 'inconnue';
@@ -167,14 +167,14 @@ router.post('/resolve-website', async (req, res, next) => {
       emailSource = contacts.source;
       const existingEmail = stored?.email ?? null;
       if (contacts.email && contacts.email !== existingEmail) {
-        setCompanyEmail(company.siren, contacts.email, contacts.source, contacts.notes);
+        await setCompanyEmail(company.siren, contacts.email, contacts.source, contacts.notes);
       } else if (!existingEmail && contacts.email) {
-        setCompanyEmail(company.siren, contacts.email, contacts.source, contacts.notes);
+        await setCompanyEmail(company.siren, contacts.email, contacts.source, contacts.notes);
       }
     }
 
-    const storedAfter = getCompanyFromStorage(company.siren);
-    const latestScanIndex = getLatestScanIndex();
+    const storedAfter = await getCompanyFromStorage(company.siren);
+    const latestScanIndex = await getLatestScanIndex();
 
     res.json({
       success: true,
