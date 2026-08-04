@@ -210,16 +210,17 @@ async function supabaseRequest<T>(table: string, init?: RequestInit, searchParam
     },
   });
 
+  const raw = await response.text();
+
   if (!response.ok) {
-    const details = await response.text();
-    throw new Error(`Supabase request failed (${response.status}): ${details}`);
+    throw new Error(`Supabase request failed (${response.status}): ${raw}`);
   }
 
-  if (response.status === 204) {
+  if (!raw.trim()) {
     return null as T;
   }
 
-  return (await response.json()) as T;
+  return JSON.parse(raw) as T;
 }
 
 async function readStorageFromSupabase(): Promise<StorageShape> {
@@ -240,8 +241,16 @@ async function readStorageFromSupabase(): Promise<StorageShape> {
   });
 
   const [companyRows, scanRows, opportunityRows] = await Promise.all([
-    supabaseRequest<Array<Pick<SupabaseCompanyRow, 'payload'>>>('vigie_companies', undefined, companyParams),
-    supabaseRequest<Array<Pick<SupabaseScanRow, 'payload'>>>('vigie_scans', undefined, scanParams),
+    supabaseRequest<Array<Pick<SupabaseCompanyRow, 'payload'>>>(
+      'vigie_companies',
+      undefined,
+      companyParams,
+    ),
+    supabaseRequest<Array<Pick<SupabaseScanRow, 'payload'>>>(
+      'vigie_scans',
+      undefined,
+      scanParams,
+    ),
     supabaseRequest<Array<Pick<SupabaseOpportunityRow, 'payload'>>>(
       'vigie_opportunities',
       undefined,
@@ -250,9 +259,9 @@ async function readStorageFromSupabase(): Promise<StorageShape> {
   ]);
 
   const storage = normalizeStorage({
-    companies: companyRows.map((row) => row.payload),
-    scans: scanRows.map((row) => row.payload),
-    opportunities: opportunityRows.map((row) => row.payload),
+    companies: (companyRows ?? []).map((row) => row.payload),
+    scans: (scanRows ?? []).map((row) => row.payload),
+    opportunities: (opportunityRows ?? []).map((row) => row.payload),
   });
   memoryStorage = storage;
   return storage;
