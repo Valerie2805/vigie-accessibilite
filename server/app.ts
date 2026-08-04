@@ -45,6 +45,10 @@ app.use(
 app.use((error: Error, req: Request, res: Response, next: NextFunction) => {
   void req
   void next
+
+  console.error('Server error:', error)
+  console.error('Server error stack:', error.stack)
+
   if (error instanceof ZodError) {
     res.status(400).json({
       success: false,
