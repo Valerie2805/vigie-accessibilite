@@ -28,6 +28,7 @@ export type Company = {
   eligibility: EligibilityStatus;
   latestScanStatus?: ScanStatus | null;
   latestScannedAt?: string | null;
+  lastExportedAt?: string | null;
 };
 
 export type WebsiteResolution = {
@@ -152,4 +153,5 @@ export type Opportunity = {
   status: OpportunityStatus;
   createdAt: string;
   updatedAt: string;
+  lastExportedAt?: string | null;
 };

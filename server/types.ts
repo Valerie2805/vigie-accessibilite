@@ -32,6 +32,7 @@ export type CompanyRecord = CompanySearchResult & {
   emailSource: 'site' | 'snov' | 'inconnue';
   emailNotes: string[];
   lastSeenAt: string;
+  lastExportedAt?: string | null;
 };
 
 export type ScanEvidenceKind =
@@ -160,4 +161,5 @@ export type OpportunityRecord = {
   status: OpportunityStatus;
   createdAt: string;
   updatedAt: string;
+  lastExportedAt?: string | null;
 };

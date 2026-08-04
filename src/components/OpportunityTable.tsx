@@ -1,4 +1,4 @@
-import { ArrowRight, Copy, Download, RefreshCw } from 'lucide-react';
+import { ArrowRight, Copy, RefreshCw } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { ConfidenceBadge } from '@/components/ConfidenceBadge';
 import { OpportunityScoreBadge } from '@/components/OpportunityScoreBadge';
@@ -10,18 +10,20 @@ import { getOpportunityOfferLabel } from '@/utils/format';
 type OpportunityTableProps = {
   opportunities: Opportunity[];
   onCopyMessage: (opportunity: Opportunity) => void;
-  onExport: (opportunity: Opportunity) => void;
   onRecompute: (opportunity: Opportunity) => void;
   onStatusChange: (opportunity: Opportunity, status: OpportunityStatus) => void;
+  selectedIds: string[];
+  onToggleSelection: (opportunityId: string) => void;
   busyId?: string | null;
 };
 
 export function OpportunityTable({
   opportunities,
   onCopyMessage,
-  onExport,
   onRecompute,
   onStatusChange,
+  selectedIds,
+  onToggleSelection,
   busyId = null,
 }: OpportunityTableProps) {
   return (
@@ -34,6 +36,15 @@ export function OpportunityTable({
           <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-3">
+                <label className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs uppercase tracking-[0.18em] text-ivory-muted">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.includes(opportunity.id)}
+                    onChange={() => onToggleSelection(opportunity.id)}
+                    className="h-4 w-4 rounded border-white/20 bg-ink-soft"
+                  />
+                  Selection
+                </label>
                 <h3 className="font-display text-2xl text-ivory">{opportunity.site.name}</h3>
                 <OpportunityScoreBadge
                   score={opportunity.scores.leadScore}
@@ -88,14 +99,6 @@ export function OpportunityTable({
                   Recalculer
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => onExport(opportunity)}
-                  className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-ivory transition hover:bg-white/10"
-                >
-                  <Download className="h-4 w-4" />
-                  Exporter
-                </button>
               </div>
             </div>
           </div>

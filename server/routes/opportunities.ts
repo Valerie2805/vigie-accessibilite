@@ -8,6 +8,7 @@ import {
   getScanById,
   listOpportunities,
   listScans,
+  markOpportunitiesAsExported,
   saveOpportunity,
   setOpportunityStatus,
 } from '../services/storage.js';
@@ -89,9 +90,29 @@ function toCsv(opportunities: OpportunityRecord[]) {
   return [headers.join(','), ...lines].join('\n');
 }
 
+router.post('/export', async (req, res, next) => {
+  const schema = z.object({
+    ids: z.array(z.string()).min(1),
+    format: z.enum(['csv', 'xls']),
+  });
+
+  try {
+    const body = schema.parse(req.body);
+    const exportResult = await markOpportunitiesAsExported(body.ids);
+    res.json({
+      success: true,
+      format: body.format,
+      exportedAt: exportResult.exportedAt,
+      opportunities: exportResult.opportunities,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.get('/export', async (req, res, next) => {
   const schema = z.object({
-    format: z.enum(['json', 'csv']).optional().default('json'),
+    format: z.enum(['csv', 'xls']).optional().default('csv'),
     ids: z.string().optional(),
   });
 
@@ -114,9 +135,9 @@ router.get('/export', async (req, res, next) => {
       return;
     }
 
-    res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.setHeader('Content-Disposition', 'attachment; filename="opportunities.json"');
-    res.send(JSON.stringify(opportunities, null, 2));
+    res.setHeader('Content-Type', 'application/vnd.ms-excel; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="opportunities.xls"');
+    res.send(toCsv(opportunities));
   } catch (error) {
     next(error);
   }

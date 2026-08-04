@@ -8,8 +8,13 @@ import {
 import { OpportunityTable } from '@/components/OpportunityTable';
 import { MetricCard } from '@/components/MetricCard';
 import type { Opportunity, OpportunityStatus } from '@/types';
-import { exportOpportunitiesToCsv, exportOpportunitiesToJson } from '@/utils/export-opportunities';
-import { listOpportunities, recomputeOpportunity, updateOpportunityStatus } from '@/utils/api';
+import { exportOpportunitiesToCsv, exportOpportunitiesToXls } from '@/utils/export-opportunities';
+import {
+  listOpportunities,
+  recomputeOpportunity,
+  registerOpportunityExport,
+  updateOpportunityStatus,
+} from '@/utils/api';
 
 const defaultFilters: OpportunityFiltersValue = {
   query: '',
@@ -36,6 +41,7 @@ export default function OpportunitiesPage() {
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   useEffect(() => {
     async function loadOpportunities() {
@@ -121,15 +127,65 @@ export default function OpportunitiesPage() {
             filteredOpportunities.length,
         )
       : 0;
+  const selectedOpportunities = filteredOpportunities.filter((opportunity) =>
+    selectedIds.includes(opportunity.id),
+  );
 
   async function handleCopyMessage(opportunity: Opportunity) {
     await navigator.clipboard.writeText(opportunity.outreach.emailBody);
     setInfo('Message copie dans le presse-papiers.');
   }
 
-  function handleExportOne(opportunity: Opportunity) {
-    exportOpportunitiesToJson([opportunity], `${opportunity.id}.json`);
-    setInfo('Export JSON genere.');
+  function handleToggleSelection(opportunityId: string) {
+    setSelectedIds((current) =>
+      current.includes(opportunityId)
+        ? current.filter((id) => id !== opportunityId)
+        : [...current, opportunityId],
+    );
+  }
+
+  function handleSelectAllVisible() {
+    setSelectedIds(filteredOpportunities.map((opportunity) => opportunity.id));
+  }
+
+  function handleClearSelection() {
+    setSelectedIds([]);
+  }
+
+  async function handleExportSelection(format: 'csv' | 'xls') {
+    if (selectedOpportunities.length === 0) {
+      setError('Choisis au moins une fiche a exporter.');
+      return;
+    }
+
+    setError(null);
+
+    try {
+      const response = await registerOpportunityExport(
+        selectedOpportunities.map((opportunity) => opportunity.id),
+        format,
+      );
+      const updatedById = new Map(response.opportunities.map((opportunity) => [opportunity.id, opportunity]));
+      setOpportunities((current) =>
+        current.map((opportunity) => updatedById.get(opportunity.id) ?? opportunity),
+      );
+
+      if (format === 'csv') {
+        exportOpportunitiesToCsv(response.opportunities, 'opportunities-selection.csv');
+      } else {
+        exportOpportunitiesToXls(response.opportunities, 'opportunities-selection.xls');
+      }
+
+      setInfo(
+        `Export ${format.toUpperCase()} genere pour ${selectedOpportunities.length} fiche(s).`,
+      );
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Impossible d'enregistrer la date d'export.",
+      );
+    }
   }
 
   async function handleRecompute(opportunity: Opportunity) {
@@ -210,20 +266,37 @@ export default function OpportunitiesPage() {
             <span className="text-xs uppercase tracking-[0.24em]">Export</span>
             <Download className="h-4 w-4" />
           </div>
+          <p className="mb-4 text-sm text-ivory-muted">
+            {selectedIds.length} fiche(s) selectionnee(s)
+          </p>
           <div className="flex flex-wrap gap-3">
             <button
               type="button"
-              onClick={() => exportOpportunitiesToJson(filteredOpportunities)}
+              onClick={handleSelectAllVisible}
               className="rounded-full border border-white/10 bg-ink-soft px-4 py-2 text-sm text-ivory transition hover:bg-white/10"
             >
-              JSON
+              Tout selectionner
             </button>
             <button
               type="button"
-              onClick={() => exportOpportunitiesToCsv(filteredOpportunities)}
+              onClick={handleClearSelection}
               className="rounded-full border border-white/10 bg-ink-soft px-4 py-2 text-sm text-ivory transition hover:bg-white/10"
             >
-              CSV
+              Vider
+            </button>
+            <button
+              type="button"
+              onClick={() => handleExportSelection('csv')}
+              className="rounded-full border border-white/10 bg-ink-soft px-4 py-2 text-sm text-ivory transition hover:bg-white/10"
+            >
+              Export CSV
+            </button>
+            <button
+              type="button"
+              onClick={() => handleExportSelection('xls')}
+              className="rounded-full border border-white/10 bg-ink-soft px-4 py-2 text-sm text-ivory transition hover:bg-white/10"
+            >
+              Export XLS
             </button>
           </div>
         </div>
@@ -252,9 +325,10 @@ export default function OpportunitiesPage() {
           <OpportunityTable
             opportunities={filteredOpportunities}
             onCopyMessage={handleCopyMessage}
-            onExport={handleExportOne}
             onRecompute={handleRecompute}
             onStatusChange={handleStatusChange}
+            selectedIds={selectedIds}
+            onToggleSelection={handleToggleSelection}
             busyId={busyId}
           />
         ) : (

@@ -7,7 +7,7 @@ import { Spinner } from '@/components/Spinner';
 import { StatusBadge } from '@/components/StatusBadge';
 import type { Company, WebsiteResolution } from '@/types';
 import { createScan, getCompany, resolveWebsite } from '@/utils/api';
-import { formatCurrency, getEligibilityLabel } from '@/utils/format';
+import { formatCurrency, formatDate, getEligibilityLabel } from '@/utils/format';
 
 export default function CompanyPage() {
   const { siren = '' } = useParams();
@@ -265,6 +265,15 @@ export default function CompanyPage() {
                   </p>
                   <p className="mt-2 text-base text-ivory">
                     {resolution?.source ?? 'inconnue'}
+                  </p>
+                </div>
+
+                <div className="rounded-2xl border border-white/10 bg-ink-soft p-4">
+                  <p className="text-xs uppercase tracking-[0.18em] text-ivory-muted">
+                    Derniere exportation
+                  </p>
+                  <p className="mt-2 text-base text-ivory">
+                    {company.lastExportedAt ? formatDate(company.lastExportedAt) : 'Jamais exporte'}
                   </p>
                 </div>
 

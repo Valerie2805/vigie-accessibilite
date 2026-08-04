@@ -137,3 +137,13 @@ export async function updateOpportunityStatus(opportunityId: string, status: Opp
     body: JSON.stringify({ status }),
   });
 }
+
+export async function registerOpportunityExport(ids: string[], format: 'csv' | 'xls') {
+  return request<{ opportunities: Opportunity[]; exportedAt: string | null }>(
+    '/api/opportunities/export',
+    {
+      method: 'POST',
+      body: JSON.stringify({ ids, format }),
+    },
+  );
+}

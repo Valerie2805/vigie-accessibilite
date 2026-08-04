@@ -13,11 +13,12 @@ import { ScoreExplanationPanel } from '@/components/ScoreExplanationPanel';
 import { UrgencyBadge } from '@/components/UrgencyBadge';
 import { WhyNowCard } from '@/components/WhyNowCard';
 import type { Opportunity, OpportunityStatus } from '@/types';
-import { exportOpportunitiesToCsv, exportOpportunitiesToJson } from '@/utils/export-opportunities';
+import { exportOpportunitiesToCsv, exportOpportunitiesToXls } from '@/utils/export-opportunities';
 import {
   getOpportunity,
   regenerateOpportunityOutreach,
   recomputeOpportunity,
+  registerOpportunityExport,
   updateOpportunityStatus,
 } from '@/utils/api';
 import { formatDate, getOpportunityOfferLabel } from '@/utils/format';
@@ -112,6 +113,32 @@ export default function OpportunityDetailPage() {
   async function handleCopy(value: string, successMessage: string) {
     await navigator.clipboard.writeText(value);
     setInfo(successMessage);
+  }
+
+  async function handleExport(format: 'csv' | 'xls') {
+    if (!opportunity) {
+      return;
+    }
+
+    try {
+      const response = await registerOpportunityExport([opportunity.id], format);
+      const updated = response.opportunities[0];
+      if (updated) {
+        setOpportunity(updated);
+        if (format === 'csv') {
+          exportOpportunitiesToCsv([updated], `${updated.id}.csv`);
+        } else {
+          exportOpportunitiesToXls([updated], `${updated.id}.xls`);
+        }
+      }
+      setInfo(`Export ${format.toUpperCase()} genere.`);
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Impossible d'enregistrer la date d'export.",
+      );
+    }
   }
 
   return (
@@ -224,19 +251,19 @@ export default function OpportunityDetailPage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => exportOpportunitiesToJson([opportunity], `${opportunity.id}.json`)}
-                    className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-ink-soft px-4 py-2 text-sm text-ivory transition hover:bg-white/10"
-                  >
-                    <Download className="h-4 w-4" />
-                    Exporter JSON
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => exportOpportunitiesToCsv([opportunity], `${opportunity.id}.csv`)}
+                    onClick={() => handleExport('csv')}
                     className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-ink-soft px-4 py-2 text-sm text-ivory transition hover:bg-white/10"
                   >
                     <Download className="h-4 w-4" />
                     Exporter CSV
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleExport('xls')}
+                    className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-ink-soft px-4 py-2 text-sm text-ivory transition hover:bg-white/10"
+                  >
+                    <Download className="h-4 w-4" />
+                    Exporter XLS
                   </button>
                 </div>
               </div>

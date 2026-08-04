@@ -104,6 +104,7 @@ function normalizeCompanyRecord(company: Partial<CompanyRecord>): CompanyRecord 
     emailSource: company.emailSource ?? 'inconnue',
     emailNotes: company.emailNotes ?? [],
     lastSeenAt: company.lastSeenAt ?? new Date().toISOString(),
+    lastExportedAt: company.lastExportedAt ?? null,
   };
 }
 
@@ -150,6 +151,7 @@ function normalizeOpportunityRecord(opportunity: Partial<OpportunityRecord>): Op
     status: opportunity.status ?? 'new',
     createdAt: opportunity.createdAt ?? new Date().toISOString(),
     updatedAt: opportunity.updatedAt ?? new Date().toISOString(),
+    lastExportedAt: opportunity.lastExportedAt ?? null,
   };
 }
 
@@ -208,17 +210,16 @@ async function supabaseRequest<T>(table: string, init?: RequestInit, searchParam
     },
   });
 
-  const raw = await response.text();
-
   if (!response.ok) {
-    throw new Error(`Supabase request failed (${response.status}): ${raw}`);
+    const details = await response.text();
+    throw new Error(`Supabase request failed (${response.status}): ${details}`);
   }
 
-  if (!raw.trim()) {
+  if (response.status === 204) {
     return null as T;
   }
 
-  return JSON.parse(raw) as T;
+  return (await response.json()) as T;
 }
 
 async function readStorageFromSupabase(): Promise<StorageShape> {
@@ -239,16 +240,8 @@ async function readStorageFromSupabase(): Promise<StorageShape> {
   });
 
   const [companyRows, scanRows, opportunityRows] = await Promise.all([
-    supabaseRequest<Array<Pick<SupabaseCompanyRow, 'payload'>>>(
-      'vigie_companies',
-      undefined,
-      companyParams,
-    ),
-    supabaseRequest<Array<Pick<SupabaseScanRow, 'payload'>>>(
-      'vigie_scans',
-      undefined,
-      scanParams,
-    ),
+    supabaseRequest<Array<Pick<SupabaseCompanyRow, 'payload'>>>('vigie_companies', undefined, companyParams),
+    supabaseRequest<Array<Pick<SupabaseScanRow, 'payload'>>>('vigie_scans', undefined, scanParams),
     supabaseRequest<Array<Pick<SupabaseOpportunityRow, 'payload'>>>(
       'vigie_opportunities',
       undefined,
@@ -257,9 +250,9 @@ async function readStorageFromSupabase(): Promise<StorageShape> {
   ]);
 
   const storage = normalizeStorage({
-    companies: (companyRows ?? []).map((row) => row.payload),
-    scans: (scanRows ?? []).map((row) => row.payload),
-    opportunities: (opportunityRows ?? []).map((row) => row.payload),
+    companies: companyRows.map((row) => row.payload),
+    scans: scanRows.map((row) => row.payload),
+    opportunities: opportunityRows.map((row) => row.payload),
   });
   memoryStorage = storage;
   return storage;
@@ -368,6 +361,7 @@ function toCompanyRecord(company: CompanySearchResult): CompanyRecord {
     emailSource: 'inconnue',
     emailNotes: [],
     lastSeenAt: new Date().toISOString(),
+    lastExportedAt: null,
   };
 }
 
@@ -518,4 +512,50 @@ export async function setOpportunityStatus(opportunityId: string, status: Opport
   );
   await writeStorage(storage);
   return storage.opportunities.find((opportunity) => opportunity.id === opportunityId) ?? null;
+}
+
+export async function markOpportunitiesAsExported(opportunityIds: string[]) {
+  const storage = await readStorage();
+  const ids = new Set(opportunityIds);
+  if (ids.size === 0) {
+    return {
+      opportunities: storage.opportunities,
+      companies: storage.companies,
+      exportedAt: null,
+    };
+  }
+
+  const exportedAt = new Date().toISOString();
+  const impactedSirens = new Set<string>();
+
+  storage.opportunities = storage.opportunities.map((opportunity) => {
+    if (!ids.has(opportunity.id)) {
+      return opportunity;
+    }
+
+    impactedSirens.add(opportunity.siren);
+    return {
+      ...opportunity,
+      lastExportedAt: exportedAt,
+      updatedAt: exportedAt,
+    };
+  });
+
+  storage.companies = storage.companies.map((company) =>
+    impactedSirens.has(company.siren)
+      ? {
+          ...company,
+          lastExportedAt: exportedAt,
+          lastSeenAt: exportedAt,
+        }
+      : company,
+  );
+
+  await writeStorage(storage);
+
+  return {
+    opportunities: storage.opportunities.filter((opportunity) => ids.has(opportunity.id)),
+    companies: storage.companies.filter((company) => impactedSirens.has(company.siren)),
+    exportedAt,
+  };
 }
