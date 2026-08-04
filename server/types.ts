@@ -56,6 +56,44 @@ export type ScanStatus =
   | 'conformite_non_demontree'
   | 'a_verifier_manuellement';
 
+export type AxeImpact = 'critical' | 'serious' | 'moderate' | 'minor' | 'unknown';
+
+export type AxeRuleSummary = {
+  ruleId: string;
+  impact: AxeImpact;
+  help: string;
+  description: string;
+  helpUrl: string;
+  occurrences: number;
+  elements: string[];
+};
+
+export type AxeCategorySummary = {
+  category: OpportunitySignalCategory;
+  count: number;
+  severity: OpportunitySeverity;
+};
+
+export type AxeHighlightedElement = {
+  ruleId: string;
+  impact: AxeImpact;
+  selector: string;
+  htmlSnippet: string;
+};
+
+export type AxeScanSummary = {
+  url: string;
+  scannedAt: string;
+  totalViolations: number;
+  violationsByImpact: Record<AxeImpact, number>;
+  categories: AxeCategorySummary[];
+  topRules: AxeRuleSummary[];
+  highlightedElements: AxeHighlightedElement[];
+  detectedSignals: string[];
+  humanAuditPoints: string[];
+  nonExpertSummary: string;
+};
+
 export type ScanRecord = {
   id: string;
   siren: string;
@@ -67,6 +105,7 @@ export type ScanRecord = {
   scannedAt: string;
   evidences: ScanEvidence[];
   notes: string[];
+  axe?: AxeScanSummary | null;
 };
 
 export type OpportunitySignalCategory =

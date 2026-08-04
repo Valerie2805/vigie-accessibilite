@@ -1,17 +1,53 @@
-import { useEffect, useState } from 'react';
-import { FileSearch, Globe, Radar, ScrollText } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { AlertTriangle, FileSearch, Globe, Radar, ScrollText } from 'lucide-react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { AppShell } from '@/components/AppShell';
 import { EvidenceList } from '@/components/EvidenceList';
 import { MetricCard } from '@/components/MetricCard';
 import { StatusBadge } from '@/components/StatusBadge';
-import type { Scan } from '@/types';
+import type { AxeImpact, OpportunitySignalCategory, Scan } from '@/types';
 import { getScan } from '@/utils/api';
 import { formatDate } from '@/utils/format';
 
 type AnalysisLocationState = {
   scan?: Scan;
 };
+
+function getCategoryLabel(category: OpportunitySignalCategory) {
+  switch (category) {
+    case 'images_sans_alternative':
+      return 'Images sans alternative';
+    case 'structure_semantique':
+      return 'Structure semantique';
+    case 'navigation_clavier':
+      return 'Navigation clavier';
+    case 'menus_modales_popups':
+      return 'Menus, modales, popups';
+    case 'composants_interactifs':
+      return 'Composants interactifs';
+    case 'documents_pdf':
+      return 'Documents PDF';
+    case 'erreurs_recurrentes_globales':
+      return 'Erreurs recurrentes globales';
+    default:
+      return category.replace(/_/g, ' ');
+  }
+}
+
+function getImpactLabel(impact: AxeImpact) {
+  switch (impact) {
+    case 'critical':
+      return 'Critique';
+    case 'serious':
+      return 'Serieux';
+    case 'moderate':
+      return 'Modere';
+    case 'minor':
+      return 'Mineur';
+    default:
+      return 'A qualifier';
+  }
+}
 
 export default function AnalysisPage() {
   const { scanId = '' } = useParams();
@@ -20,6 +56,14 @@ export default function AnalysisPage() {
   const [scan, setScan] = useState<Scan | null>(initialScan);
   const [loading, setLoading] = useState(!initialScan);
   const [error, setError] = useState<string | null>(null);
+  const axeSummary = scan?.axe ?? null;
+  const highImpactCount = useMemo(() => {
+    if (!axeSummary) {
+      return 0;
+    }
+
+    return axeSummary.violationsByImpact.critical + axeSummary.violationsByImpact.serious;
+  }, [axeSummary]);
 
   useEffect(() => {
     async function loadScan() {
@@ -75,35 +119,191 @@ export default function AnalysisPage() {
             <MetricCard
               label="Score"
               value={`${scan.score}`}
-              hint="Score cumule des signaux detectes"
+              hint={
+                axeSummary
+                  ? 'Indicateur de priorite base sur le scan automatique de cette page'
+                  : 'Score cumule des signaux detectes'
+              }
               icon={<Radar className="h-4 w-4" />}
             />
             <MetricCard
-              label="Evidences"
-              value={`${scan.evidences.length}`}
-              hint="Liens et mentions publiques reperes"
-              icon={<FileSearch className="h-4 w-4" />}
+              label={axeSummary ? 'Violations' : 'Evidences'}
+              value={`${axeSummary ? axeSummary.totalViolations : scan.evidences.length}`}
+              hint={
+                axeSummary
+                  ? 'Occurrences remontees automatiquement par axe-core'
+                  : 'Liens et mentions publiques reperes'
+              }
+              icon={axeSummary ? <AlertTriangle className="h-4 w-4" /> : <FileSearch className="h-4 w-4" />}
             />
             <MetricCard
-              label="URL analysee"
-              value={scan.websiteUrl.replace(/^https?:\/\//, '')}
-              hint="Site scanne pour cette analyse"
-              icon={<Globe className="h-4 w-4" />}
+              label={axeSummary ? 'Gravite elevee' : 'URL analysee'}
+              value={
+                axeSummary
+                  ? `${highImpactCount}`
+                  : scan.websiteUrl.replace(/^https?:\/\//, '')
+              }
+              hint={
+                axeSummary
+                  ? 'Occurrences critiques ou serieuses a confirmer par audit humain'
+                  : 'Site scanne pour cette analyse'
+              }
+              icon={axeSummary ? <AlertTriangle className="h-4 w-4" /> : <Globe className="h-4 w-4" />}
             />
             <MetricCard
-              label="Horodatage"
-              value={formatDate(scan.scannedAt)}
-              hint="Derniere execution"
-              icon={<ScrollText className="h-4 w-4" />}
+              label={axeSummary ? 'Categories' : 'Horodatage'}
+              value={axeSummary ? `${axeSummary.categories.length}` : formatDate(scan.scannedAt)}
+              hint={axeSummary ? 'Familles de problemes dominantes sur cette page' : 'Derniere execution'}
+              icon={axeSummary ? <Globe className="h-4 w-4" /> : <ScrollText className="h-4 w-4" />}
             />
           </section>
+
+          {axeSummary ? (
+            <section className="mt-8 grid gap-6 lg:grid-cols-[1.15fr,0.85fr]">
+              <article className="rounded-[28px] border border-white/10 bg-white/5 p-6 shadow-panel">
+                <p className="text-xs uppercase tracking-[0.28em] text-copper-soft">
+                  Resume Browserless + axe-core
+                </p>
+                <p className="mt-4 text-sm leading-7 text-ivory-muted">
+                  {axeSummary.nonExpertSummary}
+                </p>
+
+                <div className="mt-6 rounded-[24px] border border-white/10 bg-ink-soft p-5">
+                  <p className="text-xs uppercase tracking-[0.2em] text-moss">
+                    Signaux detectes automatiquement
+                  </p>
+                  <ul className="mt-4 space-y-3 text-sm leading-7 text-ivory-muted">
+                    {axeSummary.detectedSignals.map((signal) => (
+                      <li key={signal}>{signal}</li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div className="mt-4 rounded-[24px] border border-white/10 bg-ink-soft p-5">
+                  <p className="text-xs uppercase tracking-[0.2em] text-copper-soft">
+                    Points a confirmer par audit humain
+                  </p>
+                  <ul className="mt-4 space-y-3 text-sm leading-7 text-ivory-muted">
+                    {axeSummary.humanAuditPoints.map((point) => (
+                      <li key={point}>{point}</li>
+                    ))}
+                  </ul>
+                </div>
+              </article>
+
+              <aside className="space-y-4">
+                <div className="rounded-[28px] border border-white/10 bg-white/5 p-6 shadow-panel">
+                  <p className="text-xs uppercase tracking-[0.28em] text-moss">
+                    Vue synthese
+                  </p>
+                  <div className="mt-4 space-y-3 text-sm text-ivory-muted">
+                    <p>
+                      URL scannee: <span className="text-ivory">{axeSummary.url}</span>
+                    </p>
+                    <p>
+                      Date du scan: <span className="text-ivory">{formatDate(axeSummary.scannedAt)}</span>
+                    </p>
+                    <p>
+                      Violations critiques: <span className="text-ivory">{axeSummary.violationsByImpact.critical}</span>
+                    </p>
+                    <p>
+                      Violations serieuses: <span className="text-ivory">{axeSummary.violationsByImpact.serious}</span>
+                    </p>
+                    <p>
+                      Violations moderees: <span className="text-ivory">{axeSummary.violationsByImpact.moderate}</span>
+                    </p>
+                    <p>
+                      Violations mineures: <span className="text-ivory">{axeSummary.violationsByImpact.minor}</span>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="rounded-[28px] border border-white/10 bg-white/5 p-6 shadow-panel">
+                  <p className="text-xs uppercase tracking-[0.28em] text-copper-soft">
+                    Categories principales
+                  </p>
+                  <div className="mt-4 flex flex-wrap gap-3">
+                    {axeSummary.categories.length > 0 ? (
+                      axeSummary.categories.map((entry) => (
+                        <span
+                          key={entry.category}
+                          className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs uppercase tracking-[0.16em] text-ivory"
+                        >
+                          {getCategoryLabel(entry.category)} · {entry.count}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-sm text-ivory-muted">
+                        Aucune categorie dominante sur cette page.
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </aside>
+            </section>
+          ) : null}
 
           <section className="mt-8 grid gap-6 lg:grid-cols-[1.1fr,0.9fr]">
             <div>
               <p className="mb-4 text-xs uppercase tracking-[0.28em] text-copper-soft">
-                Preuves detectees
+                {axeSummary ? 'Regles principales detectees' : 'Preuves detectees'}
               </p>
-              <EvidenceList evidences={scan.evidences} />
+              {axeSummary ? (
+                <div className="space-y-4">
+                  {axeSummary.topRules.length > 0 ? (
+                    axeSummary.topRules.map((rule) => (
+                      <article
+                        key={rule.ruleId}
+                        className="rounded-[24px] border border-white/10 bg-white/5 p-5 shadow-panel"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-ivory">{rule.help}</p>
+                            <p className="mt-1 text-xs uppercase tracking-[0.2em] text-ivory-muted">
+                              {rule.ruleId}
+                            </p>
+                          </div>
+                          <span className="rounded-full border border-copper/30 bg-copper/10 px-3 py-1 text-xs uppercase tracking-[0.16em] text-copper-soft">
+                            {getImpactLabel(rule.impact)} · {rule.occurrences}
+                          </span>
+                        </div>
+
+                        <p className="mt-4 text-sm leading-7 text-ivory-muted">
+                          {rule.description}
+                        </p>
+
+                        {rule.elements.length > 0 ? (
+                          <div className="mt-4 rounded-2xl border border-white/10 bg-ink-soft p-4">
+                            <p className="text-xs uppercase tracking-[0.18em] text-ivory-muted">
+                              Elements touches
+                            </p>
+                            <ul className="mt-3 space-y-2 break-all text-sm text-ivory-muted">
+                              {rule.elements.map((element) => (
+                                <li key={`${rule.ruleId}-${element}`}>{element}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        ) : null}
+
+                        <a
+                          href={rule.helpUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-4 inline-flex text-sm text-copper-soft transition hover:text-copper"
+                        >
+                          Voir la regle
+                        </a>
+                      </article>
+                    ))
+                  ) : (
+                    <div className="rounded-[24px] border border-dashed border-white/15 bg-white/5 p-6 text-sm text-ivory-muted">
+                      Aucune violation axe-core n'a ete remontee sur cette page.
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <EvidenceList evidences={scan.evidences} />
+              )}
             </div>
 
             <aside className="space-y-4">
@@ -120,15 +320,46 @@ export default function AnalysisPage() {
                 </ul>
               </div>
 
+              {axeSummary ? (
+                <div className="rounded-[28px] border border-white/10 bg-white/5 p-6 shadow-panel">
+                  <p className="text-xs uppercase tracking-[0.28em] text-copper-soft">
+                    Elements touches
+                  </p>
+                  <div className="mt-4 space-y-3">
+                    {axeSummary.highlightedElements.length > 0 ? (
+                      axeSummary.highlightedElements.map((element, index) => (
+                        <div
+                          key={`${element.ruleId}-${element.selector}-${index}`}
+                          className="rounded-2xl border border-white/10 bg-ink-soft p-4"
+                        >
+                          <p className="text-xs uppercase tracking-[0.18em] text-copper-soft">
+                            {element.ruleId} · {getImpactLabel(element.impact)}
+                          </p>
+                          <p className="mt-2 break-all text-sm text-ivory">
+                            {element.selector || 'Element sans selecteur exploitable'}
+                          </p>
+                          <p className="mt-2 text-xs leading-6 text-ivory-muted">
+                            {element.htmlSnippet}
+                          </p>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-sm text-ivory-muted">
+                        Aucun extrait d element n'a pu etre remonte.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ) : null}
+
               <div className="rounded-[28px] border border-white/10 bg-white/5 p-6 shadow-panel">
                 <p className="text-xs uppercase tracking-[0.28em] text-copper-soft">
                   Interpretation
                 </p>
                 <p className="mt-4 text-sm leading-7 text-ivory-muted">
-                  Cette application cherche des indices visibles: page accessibilite,
-                  declaration, mention d'etat de conformite, contact et references
-                  institutionnelles. L'absence de signal ne prouve pas a elle seule
-                  une infraction.
+                  {axeSummary
+                    ? "Ce resultat correspond a des signaux detectes automatiquement sur une seule page via Browserless et axe-core. Il aide a prioriser une lecture commerciale, mais ne constitue ni un avis juridique ni une preuve de non-conformite."
+                    : "Cette application cherche des indices visibles: page accessibilite, declaration, mention d'etat de conformite, contact et references institutionnelles. L'absence de signal ne prouve pas a elle seule une infraction."}
                 </p>
 
                 <div className="mt-6 flex flex-wrap gap-3">

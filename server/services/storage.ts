@@ -108,6 +108,22 @@ function normalizeCompanyRecord(company: Partial<CompanyRecord>): CompanyRecord 
   };
 }
 
+function normalizeScanRecord(scan: Partial<ScanRecord>): ScanRecord {
+  return {
+    id: scan.id ?? '',
+    siren: scan.siren ?? '',
+    companyName: scan.companyName ?? '',
+    websiteUrl: scan.websiteUrl ?? '',
+    score: scan.score ?? 0,
+    status: scan.status ?? 'a_verifier_manuellement',
+    eligibility: scan.eligibility ?? 'incertain',
+    scannedAt: scan.scannedAt ?? new Date().toISOString(),
+    evidences: scan.evidences ?? [],
+    notes: scan.notes ?? [],
+    axe: scan.axe ?? null,
+  };
+}
+
 function normalizeOpportunityRecord(opportunity: Partial<OpportunityRecord>): OpportunityRecord {
   return {
     id: opportunity.id ?? '',
@@ -157,7 +173,7 @@ function normalizeOpportunityRecord(opportunity: Partial<OpportunityRecord>): Op
 
 function normalizeStorage(parsed: Partial<StorageShape>): StorageShape {
   return {
-    scans: (parsed.scans ?? []) as ScanRecord[],
+    scans: (parsed.scans ?? []).map((scan) => normalizeScanRecord(scan)),
     companies: (parsed.companies ?? []).map((company) => normalizeCompanyRecord(company)),
     opportunities: (parsed.opportunities ?? []).map((opportunity) =>
       normalizeOpportunityRecord(opportunity),
@@ -241,16 +257,8 @@ async function readStorageFromSupabase(): Promise<StorageShape> {
   });
 
   const [companyRows, scanRows, opportunityRows] = await Promise.all([
-    supabaseRequest<Array<Pick<SupabaseCompanyRow, 'payload'>>>(
-      'vigie_companies',
-      undefined,
-      companyParams,
-    ),
-    supabaseRequest<Array<Pick<SupabaseScanRow, 'payload'>>>(
-      'vigie_scans',
-      undefined,
-      scanParams,
-    ),
+    supabaseRequest<Array<Pick<SupabaseCompanyRow, 'payload'>>>('vigie_companies', undefined, companyParams),
+    supabaseRequest<Array<Pick<SupabaseScanRow, 'payload'>>>('vigie_scans', undefined, scanParams),
     supabaseRequest<Array<Pick<SupabaseOpportunityRow, 'payload'>>>(
       'vigie_opportunities',
       undefined,
@@ -259,9 +267,9 @@ async function readStorageFromSupabase(): Promise<StorageShape> {
   ]);
 
   const storage = normalizeStorage({
-    companies: (companyRows ?? []).map((row) => row.payload),
-    scans: (scanRows ?? []).map((row) => row.payload),
-    opportunities: (opportunityRows ?? []).map((row) => row.payload),
+    companies: companyRows.map((row) => row.payload),
+    scans: scanRows.map((row) => row.payload),
+    opportunities: opportunityRows.map((row) => row.payload),
   });
   memoryStorage = storage;
   return storage;

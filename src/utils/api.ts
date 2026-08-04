@@ -91,6 +91,16 @@ export async function createScan(siren: string, websiteUrl?: string) {
   });
 }
 
+export async function createAxeScan(siren: string, websiteUrl?: string) {
+  return request<{ scan: Scan; resolution: WebsiteResolution }>('/api/scans/axe', {
+    method: 'POST',
+    body: JSON.stringify({
+      siren,
+      websiteUrl: websiteUrl?.trim() || '',
+    }),
+  });
+}
+
 export async function getScan(scanId: string) {
   return request<{ scan: Scan }>(`/api/scans/${scanId}`);
 }

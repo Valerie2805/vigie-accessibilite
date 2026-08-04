@@ -6,7 +6,7 @@ import { MetricCard } from '@/components/MetricCard';
 import { Spinner } from '@/components/Spinner';
 import { StatusBadge } from '@/components/StatusBadge';
 import type { Company, WebsiteResolution } from '@/types';
-import { createScan, getCompany, resolveWebsite } from '@/utils/api';
+import { createAxeScan, getCompany, resolveWebsite } from '@/utils/api';
 import { formatCurrency, formatDate, getEligibilityLabel } from '@/utils/format';
 
 export default function CompanyPage() {
@@ -91,7 +91,10 @@ export default function CompanyPage() {
     setError(null);
 
     try {
-      const response = await createScan(company.siren, manualWebsite || resolution?.websiteUrl || '');
+      const response = await createAxeScan(
+        company.siren,
+        manualWebsite || resolution?.websiteUrl || '',
+      );
       navigate(`/analyse/${response.scan.id}`, {
         state: {
           scan: response.scan,
@@ -208,7 +211,7 @@ export default function CompanyPage() {
                     ) : (
                       <Sparkles className="h-4 w-4" />
                     )}
-                    Lancer l'analyse
+                    Lancer le scan accessibilite
                   </button>
                 </div>
               </div>
