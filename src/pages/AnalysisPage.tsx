@@ -59,6 +59,14 @@ export default function AnalysisPage() {
   const [error, setError] = useState<string | null>(null);
   const [exportingPdf, setExportingPdf] = useState(false);
   const axeSummary = scan?.axe ?? null;
+  const scanUrlHref = (() => {
+    const url = axeSummary?.url ?? scan?.websiteUrl ?? '';
+    if (!url) {
+      return null;
+    }
+
+    return /^https?:\/\//i.test(url) ? url : `https://${url}`;
+  })();
   const highImpactCount = useMemo(() => {
     if (!axeSummary) {
       return 0;
@@ -229,7 +237,19 @@ export default function AnalysisPage() {
                   </p>
                   <div className="mt-4 space-y-3 text-sm text-ivory-muted">
                     <p>
-                      URL scannee: <span className="text-ivory">{axeSummary.url}</span>
+                      URL scannee:{' '}
+                      {scanUrlHref ? (
+                        <a
+                          href={scanUrlHref}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="break-all text-copper-soft underline underline-offset-2 transition hover:text-copper"
+                        >
+                          {axeSummary.url}
+                        </a>
+                      ) : (
+                        <span className="text-ivory">{axeSummary.url}</span>
+                      )}
                     </p>
                     <p>
                       Date du scan: <span className="text-ivory">{formatDate(axeSummary.scannedAt)}</span>
