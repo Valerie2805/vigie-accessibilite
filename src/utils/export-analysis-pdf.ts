@@ -223,9 +223,19 @@ function buildList(items: string[]) {
   return `<ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
 }
 
+function normalizeUrl(value: string | null | undefined) {
+  const url = String(value ?? '').trim();
+  if (!url) {
+    return '';
+  }
+
+  return /^https?:\/\//i.test(url) ? url : `https://${url}`;
+}
+
 function buildHtml(scan: Scan) {
   const axe = scan.axe;
   const title = `Zyrelka-analyse-${slugify(scan.companyName || scan.id || 'scan')}`;
+  const scanUrl = normalizeUrl(axe?.url ?? scan.websiteUrl);
 
   const metrics = axe
     ? [
@@ -249,6 +259,7 @@ function buildHtml(scan: Scan) {
     ? `
       <section class="card">
         <h2>Resume commercial</h2>
+        <p><strong>URL scannee :</strong> <a href="${escapeHtml(scanUrl)}">${escapeHtml(axe.url)}</a></p>
         <p>${escapeHtml(axe.nonExpertSummary)}</p>
       </section>
 
@@ -512,7 +523,7 @@ function buildHtml(scan: Scan) {
             <div class="meta">
               <div>Entreprise: ${escapeHtml(scan.companyName)}</div>
               <div>SIREN: ${escapeHtml(scan.siren)}</div>
-              <div>URL: ${escapeHtml(axe?.url ?? scan.websiteUrl)}</div>
+              <div>URL: <a href="${escapeHtml(scanUrl)}">${escapeHtml(axe?.url ?? scan.websiteUrl)}</a></div>
             </div>
           </header>
 

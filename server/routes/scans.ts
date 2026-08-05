@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { scanWebsite } from '../services/accessibility-scanner.js';
 import { scanWebsiteWithAxe } from '../services/axe-browserless-scanner.js';
-import { resolveCompanyEmail } from '../services/company-email-resolver.js';
+import { resolveCompanyEmailFromSiteOnly } from '../services/company-email-resolver.js';
 import { getCompanyBySiren } from '../services/company-search.js';
 import { buildOpportunity } from '../services/opportunity-engine.js';
 import { computeScore, estimateEligibility } from '../services/scoring.js';
@@ -23,6 +23,36 @@ const createScanSchema = z.object({
   siren: z.string().length(9),
   websiteUrl: z.string().url().optional().or(z.literal('')),
 });
+
+function getAxeScanFailureMessage(error: unknown, websiteUrl: string) {
+  const rawMessage = error instanceof Error ? error.message : '';
+
+  if (rawMessage.includes('BROWSERLESS_WS_URL')) {
+    return "Le scan d'accessibilite n'a pas pu etre lance car Browserless n'est pas configure.";
+  }
+
+  if (
+    rawMessage.includes('Navigation timeout') ||
+    rawMessage.toLowerCase().includes('timeout')
+  ) {
+    return `Le scan d'accessibilite n'a pas pu etre termine sur ${websiteUrl} car la page a pris trop de temps a repondre.`;
+  }
+
+  if (
+    rawMessage.includes('ERR_NAME_NOT_RESOLVED') ||
+    rawMessage.includes('ERR_CONNECTION_REFUSED') ||
+    rawMessage.includes('ERR_CONNECTION_TIMED_OUT') ||
+    rawMessage.includes('ERR_CERT')
+  ) {
+    return `Le scan d'accessibilite n'a pas pu etre realise sur ${websiteUrl} car le site ne repond pas correctement ou son acces a echoue.`;
+  }
+
+  if (rawMessage.includes('net::')) {
+    return `Le scan d'accessibilite n'a pas pu etre realise sur ${websiteUrl} a cause d'un probleme d'acces a la page.`;
+  }
+
+  return `Le scan d'accessibilite n'a pas pu etre termine sur ${websiteUrl}. Essaie de relancer le scan ou de verifier l'URL.`;
+}
 
 function computeAxeScore(totalViolations: number, criticalCount: number, seriousCount: number) {
   const weightedScore = totalViolations * 3 + seriousCount * 4 + criticalCount * 6;
@@ -86,7 +116,7 @@ router.post('/', async (req, res, next) => {
       return;
     }
 
-    const contacts = await resolveCompanyEmail(resolution.websiteUrl);
+    const contacts = await resolveCompanyEmailFromSiteOnly(resolution.websiteUrl);
     if (contacts.email) {
       await setCompanyEmail(company.siren, contacts.email, contacts.source, contacts.notes);
     }
@@ -153,7 +183,17 @@ router.post('/axe', async (req, res, next) => {
       return;
     }
 
-    const axeSummary = await scanWebsiteWithAxe(resolution.websiteUrl);
+    let axeSummary;
+    try {
+      axeSummary = await scanWebsiteWithAxe(resolution.websiteUrl);
+    } catch (scanError) {
+      res.status(502).json({
+        success: false,
+        error: getAxeScanFailureMessage(scanError, resolution.websiteUrl),
+      });
+      return;
+    }
+
     const score = computeAxeScore(
       axeSummary.totalViolations,
       axeSummary.violationsByImpact.critical,

@@ -203,6 +203,19 @@ export default function AnalysisPage() {
                 <p className="text-xs uppercase tracking-[0.28em] text-copper-soft">
                   Resume Browserless + axe-core
                 </p>
+                {scanUrlHref ? (
+                  <p className="mt-4 text-sm text-ivory-muted">
+                    URL scannee:{' '}
+                    <a
+                      href={scanUrlHref}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="break-all text-copper-soft underline underline-offset-2 transition hover:text-copper"
+                    >
+                      {axeSummary.url}
+                    </a>
+                  </p>
+                ) : null}
                 <p className="mt-4 text-sm leading-7 text-ivory-muted">
                   {axeSummary.nonExpertSummary}
                 </p>

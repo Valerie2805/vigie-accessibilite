@@ -7,7 +7,7 @@ export type CompanyEmailResolution = {
   notes: string[];
 };
 
-export async function resolveCompanyEmail(
+export async function resolveCompanyEmailFromSiteOnly(
   websiteUrl: string,
 ): Promise<CompanyEmailResolution> {
   const contacts = await extractContacts(websiteUrl);
@@ -17,6 +17,24 @@ export async function resolveCompanyEmail(
       source: 'site',
       notes: contacts.notes,
     };
+  }
+
+  return {
+    email: null,
+    source: 'inconnue',
+    notes: [
+      ...contacts.notes,
+      "Aucun email n'a ete trouve directement sur le site.",
+    ],
+  };
+}
+
+export async function resolveCompanyEmail(
+  websiteUrl: string,
+): Promise<CompanyEmailResolution> {
+  const contacts = await resolveCompanyEmailFromSiteOnly(websiteUrl);
+  if (contacts.email) {
+    return contacts;
   }
 
   const snov = await findCompanyEmailsWithSnov(websiteUrl);
