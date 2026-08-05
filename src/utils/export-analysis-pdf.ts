@@ -1,5 +1,89 @@
 import type { AxeImpact, OpportunitySignalCategory, Scan } from '@/types';
 
+const axeRuleTranslations: Record<
+  string,
+  {
+    title: string;
+    description: string;
+  }
+> = {
+  'color-contrast': {
+    title: 'Contraste insuffisant',
+    description:
+      "Des contrastes de couleurs semblent insuffisants entre certains textes et leur arriere-plan, ce qui peut nuire a la lecture.",
+  },
+  'image-alt': {
+    title: 'Image sans alternative textuelle',
+    description:
+      "Certaines images importantes semblent depourvues de texte alternatif exploitable pour les technologies d'assistance.",
+  },
+  'input-image-alt': {
+    title: 'Bouton image sans alternative',
+    description:
+      "Certains boutons images ne semblent pas fournir de libelle textuel suffisant pour etre compris correctement.",
+  },
+  label: {
+    title: 'Champ sans libelle explicite',
+    description:
+      'Certains champs de formulaire semblent manquer de libelle clair, ce qui peut compliquer leur utilisation.',
+  },
+  'button-name': {
+    title: 'Bouton sans nom explicite',
+    description:
+      "Certains boutons semblent ne pas exposer d'intitule suffisamment clair pour les technologies d'assistance.",
+  },
+  'link-name': {
+    title: 'Lien sans intitule explicite',
+    description:
+      'Certains liens semblent manquer de texte suffisamment descriptif pour indiquer clairement leur destination.',
+  },
+  'document-title': {
+    title: 'Titre de page insuffisant',
+    description:
+      "La page semble ne pas exposer un titre suffisamment clair, ce qui peut gener la comprehension du contexte.",
+  },
+  'html-has-lang': {
+    title: 'Langue de page non declaree',
+    description:
+      "La langue principale de la page semble absente ou mal declaree, ce qui peut affecter la lecture par les aides techniques.",
+  },
+  bypass: {
+    title: 'Mecanisme de contournement absent',
+    description:
+      "Un moyen de contourner des blocs repetitifs, comme un lien d'evitement, semble manquer sur la page analysee.",
+  },
+  'heading-order': {
+    title: 'Ordre des titres a verifier',
+    description:
+      "La hierarchie des titres semble perfectible, ce qui peut rendre la structure de page moins lisible.",
+  },
+  'aria-dialog-name': {
+    title: 'Boite de dialogue sans intitule',
+    description:
+      "Certaines boites de dialogue semblent ne pas exposer de nom clair pour les technologies d'assistance.",
+  },
+  'select-name': {
+    title: 'Liste de selection sans nom explicite',
+    description:
+      'Certaines listes de selection semblent ne pas fournir de libelle suffisamment clair.',
+  },
+  'duplicate-id-aria': {
+    title: 'Identifiants ARIA dupliques',
+    description:
+      "Des identifiants utilises par des attributs ARIA semblent dupliques, ce qui peut perturber l'interpretation de la page.",
+  },
+  'nested-interactive': {
+    title: 'Elements interactifs imbriques',
+    description:
+      'Des composants interactifs semblent imbriques les uns dans les autres, ce qui peut rendre les interactions ambiguës.',
+  },
+  'frame-title': {
+    title: 'Cadre sans titre explicite',
+    description:
+      "Certains cadres ou contenus embarques semblent ne pas exposer de titre suffisamment clair.",
+  },
+};
+
 function escapeHtml(value: string | number | null | undefined) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -59,6 +143,66 @@ function getCategoryLabel(category: OpportunitySignalCategory) {
     default:
       return category.replace(/_/g, ' ');
   }
+}
+
+function getRuleCategory(ruleId: string): OpportunitySignalCategory {
+  const lowerRuleId = ruleId.toLowerCase();
+
+  if (lowerRuleId.includes('color-contrast')) {
+    return 'contraste';
+  }
+
+  if (
+    /image-alt|input-image-alt|area-alt|object-alt|svg-img-alt|role-img-alt/.test(lowerRuleId)
+  ) {
+    return 'images_sans_alternative';
+  }
+
+  if (/label|form-field|autocomplete|select-name|input-button-name|button-name/.test(lowerRuleId)) {
+    return 'formulaires';
+  }
+
+  if (/bypass|accesskeys|focus|tabindex|skip-link/.test(lowerRuleId)) {
+    return 'navigation_clavier';
+  }
+
+  if (/aria-dialog-name|modal|popup|menuitem/.test(lowerRuleId)) {
+    return 'menus_modales_popups';
+  }
+
+  if (/aria-|link-name|nested-interactive|duplicate-id-aria|role/.test(lowerRuleId)) {
+    return 'composants_interactifs';
+  }
+
+  if (/caption|video|audio|track/.test(lowerRuleId)) {
+    return 'medias';
+  }
+
+  if (/document-title|heading|html-has-lang|landmark|list|definition-list|dlitem|region/.test(lowerRuleId)) {
+    return 'structure_semantique';
+  }
+
+  return 'erreurs_recurrentes_globales';
+}
+
+function getRuleTitle(ruleId: string) {
+  return axeRuleTranslations[ruleId]?.title ?? `Regle technique ${ruleId}`;
+}
+
+function getRuleDescription(
+  ruleId: string,
+  category?: OpportunitySignalCategory,
+  impact?: AxeImpact,
+) {
+  const translated = axeRuleTranslations[ruleId]?.description;
+  if (translated) {
+    return translated;
+  }
+
+  const categoryLabel = category ? getCategoryLabel(category).toLowerCase() : 'accessibilite';
+  const impactLabel = impact ? getImpactLabel(impact).toLowerCase() : 'a verifier';
+
+  return `Cette regle technique signale un point a verifier sur la categorie ${categoryLabel}, avec un niveau de gravite ${impactLabel}.`;
 }
 
 function buildMetric(label: string, value: string, hint?: string) {
@@ -153,10 +297,11 @@ function buildHtml(scan: Scan) {
                   (rule) => `
                     <div class="item">
                       <div class="item-head">
-                        <strong>${escapeHtml(rule.help)}</strong>
+                        <strong>${escapeHtml(getRuleTitle(rule.ruleId))}</strong>
                         <span>${escapeHtml(getImpactLabel(rule.impact))} - ${escapeHtml(String(rule.occurrences))}</span>
                       </div>
-                      <p>${escapeHtml(rule.description)}</p>
+                      <p>${escapeHtml(getRuleDescription(rule.ruleId, getRuleCategory(rule.ruleId), rule.impact))}</p>
+                      <p class="muted">Identifiant technique: ${escapeHtml(rule.ruleId)}</p>
                       ${
                         rule.elements.length > 0
                           ? `<p class="muted">Elements touches: ${escapeHtml(rule.elements.join(' | '))}</p>`
