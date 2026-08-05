@@ -6,6 +6,14 @@ type SnovEmailResolution = {
   notes: string[];
 };
 
+type SnovEmailCandidate = {
+  email: string;
+  sourceType: 'prospect' | 'generic' | 'domain';
+  position?: string;
+  firstName?: string;
+  lastName?: string;
+};
+
 type SnovProspect = {
   first_name?: string;
   last_name?: string;
@@ -57,16 +65,80 @@ function scoreEmail(email: string, domain: string) {
   return score;
 }
 
-function pickBestEmail(emails: string[], domain: string) {
-  const ranked = uniq(emails)
-    .map((email) => ({
-      email: normalizeEmail(email),
-      score: scoreEmail(email, domain),
+function hasExecutivePosition(position?: string) {
+  const normalized = (position ?? '').toLowerCase();
+  return /pdg|ceo|chief executive officer|president|président|founder|fondateur|cofondateur|co-founder|gerant|gérant|managing director|directeur general|directeur général|owner|dirigeant/.test(
+    normalized,
+  );
+}
+
+function isGenericEmail(localPart: string) {
+  return /^(contact|info|hello|bonjour|commercial|sales|support|serviceclient|service-client|admin|office|team|communication|marketing)$/.test(
+    localPart,
+  );
+}
+
+function isLikelyPersonalEmail(localPart: string) {
+  return /^[a-z0-9._-]+$/.test(localPart) && !isGenericEmail(localPart);
+}
+
+function scoreEmailCandidate(candidate: SnovEmailCandidate, domain: string) {
+  const normalizedEmail = normalizeEmail(candidate.email);
+  const [localPart, emailDomain] = normalizedEmail.split('@');
+  if (!localPart || !emailDomain || emailDomain !== domain) {
+    return -100;
+  }
+
+  let score = scoreEmail(normalizedEmail, domain);
+
+  if (candidate.sourceType === 'prospect') {
+    score += 20;
+  }
+
+  if (candidate.sourceType === 'domain') {
+    score += 4;
+  }
+
+  if (candidate.sourceType === 'generic') {
+    score -= 8;
+  }
+
+  if (hasExecutivePosition(candidate.position)) {
+    score += 80;
+  }
+
+  if (candidate.position && /director|directeur|head|responsable|manager|managere?/.test(candidate.position.toLowerCase())) {
+    score += 18;
+  }
+
+  if (isLikelyPersonalEmail(localPart)) {
+    score += 14;
+  }
+
+  if (candidate.firstName || candidate.lastName) {
+    score += 6;
+  }
+
+  return score;
+}
+
+function pickBestEmail(candidates: SnovEmailCandidate[], domain: string) {
+  const deduped = Array.from(
+    new Map(
+      candidates.map((candidate) => [normalizeEmail(candidate.email), candidate]),
+    ).values(),
+  );
+
+  const ranked = deduped
+    .map((candidate) => ({
+      email: normalizeEmail(candidate.email),
+      score: scoreEmailCandidate(candidate, domain),
+      candidate,
     }))
     .filter((entry) => entry.score > -100)
     .sort((a, b) => b.score - a.score);
 
-  return ranked[0]?.email ?? null;
+  return ranked[0]?.candidate ?? null;
 }
 
 function extractTaskHash(payload: Record<string, unknown>) {
@@ -172,6 +244,7 @@ async function runDomainTask(
   startUrl: string,
   resultBaseUrl: string,
   domain: string,
+  sourceType: 'generic' | 'domain',
 ) {
   const requestUrl = new URL(startUrl);
   requestUrl.searchParams.set('domain', domain);
@@ -211,17 +284,20 @@ async function runDomainTask(
     const emails = uniq(extractEmailsDeep(resultPayload.data));
 
     if (emails.length > 0) {
-      return emails;
+      return emails.map((email) => ({
+        email,
+        sourceType,
+      })) as SnovEmailCandidate[];
     }
 
     if (status === 'completed') {
-      return [];
+      return [] as SnovEmailCandidate[];
     }
 
     await wait(800);
   }
 
-  return [];
+  return [] as SnovEmailCandidate[];
 }
 
 async function fetchTaskEmails(token: string, resultUrl: string) {
@@ -255,7 +331,7 @@ async function fetchTaskEmails(token: string, resultUrl: string) {
   return [];
 }
 
-async function runProspectEmailTask(token: string, startUrl: string) {
+async function runProspectEmailTask(token: string, startUrl: string, prospect: SnovProspect) {
   const response = await fetch(startUrl, {
     method: 'POST',
     headers: {
@@ -271,23 +347,43 @@ async function runProspectEmailTask(token: string, startUrl: string) {
   const payload = (await response.json()) as Record<string, unknown>;
   const inlineEmails = uniq(extractEmailsDeep(payload.data));
   if (inlineEmails.length > 0) {
-    return inlineEmails;
+    return inlineEmails.map((email) => ({
+      email,
+      sourceType: 'prospect',
+      position: prospect.position,
+      firstName: prospect.first_name,
+      lastName: prospect.last_name,
+    })) as SnovEmailCandidate[];
   }
 
   const resultLink = extractResultLink(payload);
   if (resultLink) {
-    return fetchTaskEmails(token, resultLink);
+    const emails = await fetchTaskEmails(token, resultLink);
+    return emails.map((email) => ({
+      email,
+      sourceType: 'prospect',
+      position: prospect.position,
+      firstName: prospect.first_name,
+      lastName: prospect.last_name,
+    })) as SnovEmailCandidate[];
   }
 
   const taskHash = extractTaskHash(payload);
   if (taskHash) {
-    return fetchTaskEmails(
+    const emails = await fetchTaskEmails(
       token,
       `https://api.snov.io/v2/domain-search/prospects/search-emails/result/${taskHash}`,
     );
+    return emails.map((email) => ({
+      email,
+      sourceType: 'prospect',
+      position: prospect.position,
+      firstName: prospect.first_name,
+      lastName: prospect.last_name,
+    })) as SnovEmailCandidate[];
   }
 
-  return [];
+  return [] as SnovEmailCandidate[];
 }
 
 async function searchProspectEmails(token: string, domain: string) {
@@ -337,18 +433,22 @@ async function searchProspectEmails(token: string, domain: string) {
     ? (resultPayload.data as SnovProspect[])
     : [];
 
-  const emails: string[] = [];
+  const candidates: SnovEmailCandidate[] = [];
 
   for (const prospect of prospects.slice(0, 10)) {
     if (!prospect.search_emails_start) {
       continue;
     }
 
-    const prospectEmails = await runProspectEmailTask(token, prospect.search_emails_start);
-    emails.push(...prospectEmails);
+    const prospectEmails = await runProspectEmailTask(
+      token,
+      prospect.search_emails_start,
+      prospect,
+    );
+    candidates.push(...prospectEmails);
   }
 
-  return uniq(emails);
+  return candidates;
 }
 
 export async function findCompanyEmailsWithSnov(websiteUrl: string): Promise<SnovEmailResolution> {
@@ -387,6 +487,7 @@ export async function findCompanyEmailsWithSnov(websiteUrl: string): Promise<Sno
       'https://api.snov.io/v2/domain-search/domain-emails/start',
       'https://api.snov.io/v2/domain-search/domain-emails/result',
       domain,
+      'domain',
     );
 
     const genericEmails = await runDomainTask(
@@ -394,18 +495,27 @@ export async function findCompanyEmailsWithSnov(websiteUrl: string): Promise<Sno
       'https://api.snov.io/v2/domain-search/generic-contacts/start',
       'https://api.snov.io/v2/domain-search/generic-contacts/result',
       domain,
+      'generic',
     );
 
-    const emails = uniq([...prospectEmails, ...genericEmails, ...domainEmails]).filter((email) =>
-      email.endsWith(`@${domain}`),
+    const candidates = [...prospectEmails, ...genericEmails, ...domainEmails].filter((candidate) =>
+      normalizeEmail(candidate.email).endsWith(`@${domain}`),
     );
+    const bestCandidate = pickBestEmail(candidates, domain);
+    const emails = uniq(candidates.map((candidate) => normalizeEmail(candidate.email)));
 
     return {
-      email: pickBestEmail(emails, domain),
+      email: bestCandidate?.email ?? null,
       emails,
       notes:
         emails.length > 0
-          ? ['Email trouve via Snov.io']
+          ? [
+              hasExecutivePosition(bestCandidate?.position)
+                ? 'Email de dirigeant priorise via Snov.io'
+                : bestCandidate?.sourceType === 'prospect'
+                  ? 'Email prospect priorise via Snov.io'
+                  : 'Email trouve via Snov.io',
+            ]
           : ['Snov.io n a retourne aucun email sur ce domaine'],
     };
   } catch (error) {
