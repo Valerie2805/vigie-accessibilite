@@ -84,6 +84,25 @@ const axeRuleTranslations: Record<
   },
 };
 
+const legacyEnglishAxePhrases: Array<[string, string]> = [
+  ['Images must have alternative text', 'Images sans alternative textuelle'],
+  ['Image buttons must have alternative text', 'Boutons image sans alternative textuelle'],
+  ['Links must have discernible text', 'Liens sans intitulé explicite'],
+  ['Elements must meet minimum color contrast ratio thresholds', 'Contraste insuffisant'],
+  ['Buttons must have discernible text', 'Boutons sans nom explicite'],
+  ['Form elements must have labels', 'Champs sans libellé explicite'],
+  ['Frames must have an accessible name', 'Cadres sans titre explicite'],
+  ['Documents must have <title> element to aid in navigation', 'Titre de page insuffisant'],
+  ['<html> element must have a lang attribute', 'Langue de page non déclarée'],
+];
+
+function normalizeLegacyAxeText(value: string) {
+  return legacyEnglishAxePhrases.reduce(
+    (current, [english, french]) => current.split(english).join(french),
+    value,
+  );
+}
+
 function escapeHtml(value: string | number | null | undefined) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -217,52 +236,189 @@ function extractReadableText(htmlSnippet: string) {
   return plainText.length > 0 ? plainText : null;
 }
 
+function shortenText(value: string, maxLength = 80) {
+  return value.length > maxLength ? `${value.slice(0, maxLength - 1)}…` : value;
+}
+
+function extractSnippetAttribute(htmlSnippet: string, attribute: string) {
+  const match = htmlSnippet.match(new RegExp(`${attribute}\\s*=\\s*["']([^"']+)["']`, 'i'));
+  const value = match?.[1]?.trim();
+  return value ? value : null;
+}
+
+function describeElementKind(selector: string, htmlSnippet: string) {
+  const lowerSelector = selector.toLowerCase();
+  const lowerSnippet = htmlSnippet.toLowerCase();
+
+  if (
+    lowerSelector.includes('input') ||
+    lowerSelector.includes('select') ||
+    lowerSelector.includes('textarea') ||
+    lowerSelector.includes('form') ||
+    lowerSnippet.includes('<input') ||
+    lowerSnippet.includes('<select') ||
+    lowerSnippet.includes('<textarea')
+  ) {
+    return 'champ de formulaire';
+  }
+
+  if (
+    lowerSelector.includes('button') ||
+    lowerSnippet.includes('<button') ||
+    /type\s*=\s*["']?(button|submit|reset)["']?/i.test(htmlSnippet)
+  ) {
+    return "bouton d'action";
+  }
+
+  if (
+    lowerSelector.includes('img') ||
+    lowerSelector.includes('image') ||
+    lowerSnippet.includes('<img') ||
+    lowerSnippet.includes('<svg')
+  ) {
+    return 'visuel';
+  }
+
+  if (
+    lowerSelector.includes('a[') ||
+    lowerSelector.includes('href') ||
+    lowerSelector.includes('link') ||
+    lowerSnippet.includes('<a ')
+  ) {
+    return 'lien';
+  }
+
+  if (
+    lowerSelector.includes('dialog') ||
+    lowerSelector.includes('modal') ||
+    lowerSelector.includes('popup') ||
+    lowerSnippet.includes('dialog')
+  ) {
+    return 'fenêtre de dialogue';
+  }
+
+  if (lowerSelector.includes('nav') || lowerSelector.includes('menu') || lowerSnippet.includes('<nav')) {
+    return 'élément de navigation';
+  }
+
+  if (
+    lowerSelector.includes('iframe') ||
+    lowerSelector.includes('frame') ||
+    lowerSnippet.includes('<iframe') ||
+    lowerSnippet.includes('<frame')
+  ) {
+    return 'contenu embarqué';
+  }
+
+  return 'élément';
+}
+
 function describeAffectedElement(selector: string, htmlSnippet: string, ruleId: string) {
   const readableText = extractReadableText(htmlSnippet);
   const lowerSelector = selector.toLowerCase();
   const category = getRuleCategory(ruleId);
   const lowerRuleId = ruleId.toLowerCase();
+  const elementKind = describeElementKind(selector, htmlSnippet);
+  const ariaLabel = extractSnippetAttribute(htmlSnippet, 'aria-label');
+  const titleAttr = extractSnippetAttribute(htmlSnippet, 'title');
+  const placeholder = extractSnippetAttribute(htmlSnippet, 'placeholder');
 
   if (lowerRuleId === 'link-name') {
     if (readableText) {
-      const shortText = readableText.length > 80 ? `${readableText.slice(0, 79)}…` : readableText;
+      const shortText = shortenText(readableText);
       return `Lien dont l'intitulé visible « ${shortText} » semble insuffisant ou ambigu.`;
     }
 
     if (lowerSelector.includes('img') || lowerSelector.includes('image')) {
-      return "Lien ou visuel cliquable sans intitulé explicite.";
+      return 'Visuel cliquable sans intitulé explicite pour indiquer sa destination.';
     }
 
-    return "Lien cliquable sans intitulé explicite.";
+    return 'Lien cliquable sans intitulé explicite pour indiquer sa destination.';
+  }
+
+  if (/image-alt|input-image-alt|area-alt|object-alt|svg-img-alt|role-img-alt/.test(lowerRuleId)) {
+    if (titleAttr) {
+      return `Visuel dont le libellé disponible « ${shortenText(titleAttr)} » ne remplace pas un vrai texte alternatif.`;
+    }
+
+    if (lowerRuleId === 'input-image-alt') {
+      return "Bouton illustré sans libellé textuel explicite pour être compris par les aides techniques.";
+    }
+
+    return "Visuel informatif sans texte alternatif exploitable par les aides techniques.";
+  }
+
+  if (lowerRuleId === 'button-name') {
+    if (ariaLabel) {
+      return `Bouton dont le libellé technique « ${shortenText(ariaLabel)} » semble insuffisant ou mal exposé.`;
+    }
+
+    return "Bouton d'action sans intitulé explicite.";
+  }
+
+  if (lowerRuleId === 'label' || lowerRuleId === 'select-name') {
+    if (placeholder) {
+      return `Champ de formulaire dont l'indication « ${shortenText(placeholder)} » ne remplace pas un libellé clair.`;
+    }
+
+    return 'Champ de formulaire sans libellé explicite.';
+  }
+
+  if (lowerRuleId === 'aria-dialog-name') {
+    return "Fenêtre de dialogue sans intitulé explicite.";
+  }
+
+  if (lowerRuleId === 'frame-title') {
+    return 'Contenu embarqué sans titre explicite.';
+  }
+
+  if (lowerRuleId === 'document-title') {
+    return 'Page sans titre suffisamment explicite dans le navigateur ou les aides techniques.';
+  }
+
+  if (lowerRuleId === 'html-has-lang') {
+    return 'Langue principale de la page non déclarée clairement.';
+  }
+
+  if (lowerRuleId === 'duplicate-id-aria') {
+    return "Composants liés aux aides techniques avec des repères internes dupliqués, ce qui peut créer des confusions de lecture.";
+  }
+
+  if (lowerRuleId === 'nested-interactive') {
+    return "Zone interactive contenant un autre élément cliquable ou activable, ce qui peut rendre l'usage confus.";
   }
 
   if (readableText) {
-    const shortText = readableText.length > 80 ? `${readableText.slice(0, 79)}…` : readableText;
+    const shortText = shortenText(readableText);
     return `Élément contenant le texte « ${shortText} ».`;
   }
 
-  if (lowerSelector.includes('button')) {
-    return "Bouton ou élément d'action concerné.";
+  if (elementKind === "bouton d'action") {
+    return "Bouton d'action concerné.";
   }
 
-  if (lowerSelector.includes('input') || lowerSelector.includes('select') || lowerSelector.includes('textarea') || lowerSelector.includes('form')) {
-    return 'Champ ou élément de formulaire concerné.';
+  if (elementKind === 'champ de formulaire') {
+    return 'Champ de formulaire concerné.';
   }
 
-  if (lowerSelector.includes('img') || lowerSelector.includes('image')) {
-    return 'Image ou visuel concerné.';
+  if (elementKind === 'visuel') {
+    return 'Visuel concerné.';
   }
 
-  if (lowerSelector.includes('link') || lowerSelector.includes('href') || lowerSelector.includes('a[')) {
+  if (elementKind === 'lien') {
     return 'Lien ou élément cliquable concerné.';
   }
 
-  if (lowerSelector.includes('menu') || lowerSelector.includes('nav')) {
+  if (elementKind === 'élément de navigation') {
     return 'Élément de navigation concerné.';
   }
 
-  if (lowerSelector.includes('dialog') || lowerSelector.includes('modal') || lowerSelector.includes('popup')) {
+  if (elementKind === 'fenêtre de dialogue') {
     return 'Fenêtre, modale ou panneau interactif concerné.';
+  }
+
+  if (elementKind === 'contenu embarqué') {
+    return 'Contenu embarqué concerné.';
   }
 
   if (category === 'contraste') {
@@ -277,7 +433,7 @@ function describeAffectedElement(selector: string, htmlSnippet: string, ruleId: 
     return 'Composant interactif concerné.';
   }
 
-  return 'Zone précise du site concernée.';
+  return `${elementKind.charAt(0).toUpperCase()}${elementKind.slice(1)} concerné.`;
 }
 
 function normalizeRuleElement(
@@ -351,17 +507,17 @@ function buildHtml(scan: Scan) {
       <section class="card">
         <h2>Resume commercial</h2>
         <p><strong>URL scannee :</strong> <a href="${escapeHtml(scanUrl)}">${escapeHtml(axe.url)}</a></p>
-        <p>${escapeHtml(axe.nonExpertSummary)}</p>
+        <p>${escapeHtml(normalizeLegacyAxeText(axe.nonExpertSummary))}</p>
       </section>
 
       <section class="grid-two">
         <div class="card">
           <h2>Signaux detectes automatiquement</h2>
-          ${buildList(axe.detectedSignals)}
+          ${buildList(axe.detectedSignals.map((item) => normalizeLegacyAxeText(item)))}
         </div>
         <div class="card">
           <h2>Points a confirmer par audit humain</h2>
-          ${buildList(axe.humanAuditPoints)}
+          ${buildList(axe.humanAuditPoints.map((item) => normalizeLegacyAxeText(item)))}
         </div>
       </section>
 

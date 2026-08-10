@@ -19,6 +19,24 @@ const impactPriority: Record<AxeImpact, number> = {
   unknown: 0,
 };
 
+const axeRuleTitles: Record<string, string> = {
+  'color-contrast': 'Contraste insuffisant',
+  'image-alt': 'Image sans alternative textuelle',
+  'input-image-alt': 'Bouton image sans alternative',
+  label: 'Champ sans libellé explicite',
+  'button-name': 'Bouton sans nom explicite',
+  'link-name': 'Lien sans intitulé explicite',
+  'document-title': 'Titre de page insuffisant',
+  'html-has-lang': 'Langue de page non déclarée',
+  bypass: 'Mécanisme de contournement absent',
+  'heading-order': 'Ordre des titres à vérifier',
+  'aria-dialog-name': 'Boîte de dialogue sans intitulé',
+  'select-name': 'Liste de sélection sans nom explicite',
+  'duplicate-id-aria': 'Identifiants ARIA dupliqués',
+  'nested-interactive': 'Éléments interactifs imbriqués',
+  'frame-title': 'Cadre sans titre explicite',
+};
+
 function ensureBrowserlessConfigured() {
   if (!browserlessWSEndpoint) {
     throw new Error("La variable d'environnement BROWSERLESS_WS_URL est manquante");
@@ -178,6 +196,31 @@ function buildCategorySummary(violations: axe.Result[]) {
     .slice(0, 5);
 }
 
+function getCategoryLabel(category: OpportunitySignalCategory) {
+  switch (category) {
+    case 'images_sans_alternative':
+      return 'images sans alternative';
+    case 'structure_semantique':
+      return 'structure sémantique';
+    case 'navigation_clavier':
+      return 'navigation clavier';
+    case 'menus_modales_popups':
+      return 'menus, modales, popups';
+    case 'composants_interactifs':
+      return 'composants interactifs';
+    case 'documents_pdf':
+      return 'documents PDF';
+    case 'erreurs_recurrentes_globales':
+      return 'erreurs récurrentes globales';
+    default:
+      return category.replace(/_/g, ' ');
+  }
+}
+
+function getRuleTitle(ruleId: string, fallback?: string) {
+  return axeRuleTitles[ruleId] ?? fallback ?? "règle d'accessibilité à vérifier";
+}
+
 function buildTopRules(violations: axe.Result[]) {
   return violations
     .map(
@@ -222,8 +265,8 @@ function buildDetectedSignals(
   categories: AxeCategorySummary[],
   topRules: AxeRuleSummary[],
 ) {
-  const mainCategories = categories.slice(0, 3).map((entry) => entry.category.replace(/_/g, ' '));
-  const mainRules = topRules.slice(0, 3).map((entry) => entry.help);
+  const mainCategories = categories.slice(0, 3).map((entry) => getCategoryLabel(entry.category));
+  const mainRules = topRules.slice(0, 3).map((entry) => getRuleTitle(entry.ruleId, entry.help));
   const severeCount = impactCounts.critical + impactCounts.serious;
 
   return [
