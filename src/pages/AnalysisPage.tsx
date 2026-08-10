@@ -254,6 +254,22 @@ function describeAffectedElement(selector: string, htmlSnippet: string, ruleId: 
   return 'Zone précise du site concernée.';
 }
 
+function normalizeRuleElement(
+  element: string | { selector?: string; htmlSnippet?: string },
+): { selector: string; htmlSnippet: string } {
+  if (typeof element === 'string') {
+    return {
+      selector: element,
+      htmlSnippet: '',
+    };
+  }
+
+  return {
+    selector: element.selector ?? '',
+    htmlSnippet: element.htmlSnippet ?? '',
+  };
+}
+
 export default function AnalysisPage() {
   const { scanId = '' } = useParams();
   const location = useLocation();
@@ -545,9 +561,11 @@ export default function AnalysisPage() {
                               Zones concernées
                             </p>
                             <ul className="mt-3 space-y-3 text-sm text-ivory-muted">
-                              {rule.elements.map((element) => (
+                              {rule.elements.map((rawElement, index) => {
+                                const element = normalizeRuleElement(rawElement);
+                                return (
                                 <li
-                                  key={`${rule.ruleId}-${element.selector}-${element.htmlSnippet}`}
+                                  key={`${rule.ruleId}-${element.selector}-${element.htmlSnippet}-${index}`}
                                   className="rounded-xl border border-white/10 bg-white/5 px-3 py-3"
                                 >
                                   <p>{describeAffectedElement(element.selector, element.htmlSnippet, rule.ruleId)}</p>
@@ -557,7 +575,8 @@ export default function AnalysisPage() {
                                     </p>
                                   ) : null}
                                 </li>
-                              ))}
+                                );
+                              })}
                             </ul>
                           </div>
                         ) : (

@@ -280,6 +280,22 @@ function describeAffectedElement(selector: string, htmlSnippet: string, ruleId: 
   return 'Zone précise du site concernée.';
 }
 
+function normalizeRuleElement(
+  element: string | { selector?: string; htmlSnippet?: string },
+) {
+  if (typeof element === 'string') {
+    return {
+      selector: element,
+      htmlSnippet: '',
+    };
+  }
+
+  return {
+    selector: element.selector ?? '',
+    htmlSnippet: element.htmlSnippet ?? '',
+  };
+}
+
 function buildMetric(label: string, value: string, hint?: string) {
   return `
     <div class="metric">
@@ -392,14 +408,14 @@ function buildHtml(scan: Scan) {
                       ${
                         rule.elements.length > 0
                           ? `<ul>${rule.elements
-                              .map(
-                                (element) =>
-                                  `<li>${escapeHtml(describeAffectedElement(element.selector, element.htmlSnippet, rule.ruleId))}${
+                              .map((rawElement) => {
+                                const element = normalizeRuleElement(rawElement);
+                                return `<li>${escapeHtml(describeAffectedElement(element.selector, element.htmlSnippet, rule.ruleId))}${
                                     extractReadableText(element.htmlSnippet)
                                       ? `<br /><span class="muted">Contenu repéré : « ${escapeHtml(extractReadableText(element.htmlSnippet))} »</span>`
                                       : ''
-                                  }</li>`,
-                              )
+                                  }</li>`;
+                              })
                               .join('')}</ul>`
                           : `<p class="empty">Aucun exemple concret n'a pu être extrait automatiquement pour cette règle.</p>`
                       }
