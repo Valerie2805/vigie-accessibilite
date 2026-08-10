@@ -58,6 +58,11 @@ export type ScanStatus =
 
 export type AxeImpact = 'critical' | 'serious' | 'moderate' | 'minor' | 'unknown';
 
+export type AxeRuleElementSummary = {
+  selector: string;
+  htmlSnippet: string;
+};
+
 export type AxeRuleSummary = {
   ruleId: string;
   impact: AxeImpact;
@@ -65,7 +70,7 @@ export type AxeRuleSummary = {
   description: string;
   helpUrl: string;
   occurrences: number;
-  elements: string[];
+  elements: AxeRuleElementSummary[];
 };
 
 export type AxeCategorySummary = {

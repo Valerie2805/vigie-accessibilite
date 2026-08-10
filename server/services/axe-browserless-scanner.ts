@@ -190,8 +190,11 @@ function buildTopRules(violations: axe.Result[]) {
         occurrences: violation.nodes.length,
         elements: violation.nodes
           .slice(0, 3)
-          .map((node) => node.target.join(' '))
-          .filter(Boolean),
+          .map((node) => ({
+            selector: node.target.join(' '),
+            htmlSnippet: compactText(node.html),
+          }))
+          .filter((element) => Boolean(element.selector || element.htmlSnippet)),
       }),
     )
     .sort((a, b) => b.occurrences - a.occurrences)

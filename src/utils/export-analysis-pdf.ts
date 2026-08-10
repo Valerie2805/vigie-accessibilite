@@ -186,7 +186,7 @@ function getRuleCategory(ruleId: string): OpportunitySignalCategory {
 }
 
 function getRuleTitle(ruleId: string) {
-  return axeRuleTranslations[ruleId]?.title ?? `Règle technique ${ruleId}`;
+  return axeRuleTranslations[ruleId]?.title ?? "Règle d'accessibilité à vérifier";
 }
 
 function getRuleDescription(
@@ -221,6 +221,20 @@ function describeAffectedElement(selector: string, htmlSnippet: string, ruleId: 
   const readableText = extractReadableText(htmlSnippet);
   const lowerSelector = selector.toLowerCase();
   const category = getRuleCategory(ruleId);
+  const lowerRuleId = ruleId.toLowerCase();
+
+  if (lowerRuleId === 'link-name') {
+    if (readableText) {
+      const shortText = readableText.length > 80 ? `${readableText.slice(0, 79)}…` : readableText;
+      return `Lien dont l'intitulé visible « ${shortText} » semble insuffisant ou ambigu.`;
+    }
+
+    if (lowerSelector.includes('img') || lowerSelector.includes('image')) {
+      return "Lien ou visuel cliquable sans intitulé explicite.";
+    }
+
+    return "Lien cliquable sans intitulé explicite.";
+  }
 
   if (readableText) {
     const shortText = readableText.length > 80 ? `${readableText.slice(0, 79)}…` : readableText;
@@ -375,16 +389,19 @@ function buildHtml(scan: Scan) {
                       <p>${escapeHtml(
                         getRuleDescription(rule.ruleId, getRuleCategory(rule.ruleId), rule.impact),
                       )}</p>
-                      <p class="muted">Identifiant technique : ${escapeHtml(rule.ruleId)}</p>
                       ${
                         rule.elements.length > 0
                           ? `<ul>${rule.elements
                               .map(
                                 (element) =>
-                                  `<li>${escapeHtml(describeAffectedElement(element, '', rule.ruleId))}</li>`,
+                                  `<li>${escapeHtml(describeAffectedElement(element.selector, element.htmlSnippet, rule.ruleId))}${
+                                    extractReadableText(element.htmlSnippet)
+                                      ? `<br /><span class="muted">Contenu repéré : « ${escapeHtml(extractReadableText(element.htmlSnippet))} »</span>`
+                                      : ''
+                                  }</li>`,
                               )
                               .join('')}</ul>`
-                          : ''
+                          : `<p class="empty">Aucun exemple concret n'a pu être extrait automatiquement pour cette règle.</p>`
                       }
                     </div>
                   `,
@@ -403,7 +420,7 @@ function buildHtml(scan: Scan) {
                   (element) => `
                     <div class="item">
                       <div class="item-head">
-                        <strong>${escapeHtml(element.ruleId)}</strong>
+                        <strong>${escapeHtml(getRuleTitle(element.ruleId))}</strong>
                         <span>${escapeHtml(getImpactLabel(element.impact))}</span>
                       </div>
                       <p>${escapeHtml(

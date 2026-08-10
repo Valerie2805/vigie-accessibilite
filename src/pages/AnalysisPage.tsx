@@ -167,7 +167,7 @@ function getRuleCategory(ruleId: string): OpportunitySignalCategory {
 }
 
 function getRuleTitle(ruleId: string) {
-  return axeRuleTranslations[ruleId]?.title ?? `Règle technique ${ruleId}`;
+  return axeRuleTranslations[ruleId]?.title ?? "Règle d'accessibilité à vérifier";
 }
 
 function getRuleDescription(ruleId: string, impact: AxeImpact) {
@@ -195,6 +195,20 @@ function describeAffectedElement(selector: string, htmlSnippet: string, ruleId: 
   const readableText = extractReadableText(htmlSnippet);
   const lowerSelector = selector.toLowerCase();
   const category = getRuleCategory(ruleId);
+  const lowerRuleId = ruleId.toLowerCase();
+
+  if (lowerRuleId === 'link-name') {
+    if (readableText) {
+      const shortText = readableText.length > 80 ? `${readableText.slice(0, 79)}…` : readableText;
+      return `Lien dont l'intitulé visible « ${shortText} » semble insuffisant ou ambigu.`;
+    }
+
+    if (lowerSelector.includes('img') || lowerSelector.includes('image')) {
+      return "Lien ou visuel cliquable sans intitulé explicite.";
+    }
+
+    return "Lien cliquable sans intitulé explicite.";
+  }
 
   if (readableText) {
     const shortText = readableText.length > 80 ? `${readableText.slice(0, 79)}…` : readableText;
@@ -515,9 +529,6 @@ export default function AnalysisPage() {
                             <p className="text-sm font-semibold text-ivory">
                               {getRuleTitle(rule.ruleId)}
                             </p>
-                            <p className="mt-1 text-xs uppercase tracking-[0.2em] text-ivory-muted">
-                              {rule.ruleId}
-                            </p>
                           </div>
                           <span className="rounded-full border border-copper/30 bg-copper/10 px-3 py-1 text-xs uppercase tracking-[0.16em] text-copper-soft">
                             {getImpactLabel(rule.impact)} · {rule.occurrences}
@@ -533,15 +544,27 @@ export default function AnalysisPage() {
                             <p className="text-xs uppercase tracking-[0.18em] text-ivory-muted">
                               Zones concernées
                             </p>
-                            <ul className="mt-3 space-y-2 break-all text-sm text-ivory-muted">
+                            <ul className="mt-3 space-y-3 text-sm text-ivory-muted">
                               {rule.elements.map((element) => (
-                                <li key={`${rule.ruleId}-${element}`}>
-                                  {describeAffectedElement(element, '', rule.ruleId)}
+                                <li
+                                  key={`${rule.ruleId}-${element.selector}-${element.htmlSnippet}`}
+                                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-3"
+                                >
+                                  <p>{describeAffectedElement(element.selector, element.htmlSnippet, rule.ruleId)}</p>
+                                  {extractReadableText(element.htmlSnippet) ? (
+                                    <p className="mt-2 text-xs leading-6 text-ivory-muted">
+                                      Contenu repéré : « {extractReadableText(element.htmlSnippet)} »
+                                    </p>
+                                  ) : null}
                                 </li>
                               ))}
                             </ul>
                           </div>
-                        ) : null}
+                        ) : (
+                          <div className="mt-4 rounded-2xl border border-white/10 bg-ink-soft p-4 text-sm text-ivory-muted">
+                            Aucun exemple concret n'a pu être extrait automatiquement pour cette règle.
+                          </div>
+                        )}
 
                         <a
                           href={rule.helpUrl}
@@ -591,7 +614,7 @@ export default function AnalysisPage() {
                           className="rounded-2xl border border-white/10 bg-ink-soft p-4"
                         >
                           <p className="text-xs uppercase tracking-[0.18em] text-copper-soft">
-                            {element.ruleId} · {getImpactLabel(element.impact)}
+                            {getRuleTitle(element.ruleId)} · {getImpactLabel(element.impact)}
                           </p>
                           <p className="mt-2 text-sm text-ivory">
                             {describeAffectedElement(
