@@ -112,15 +112,15 @@ function slugify(value: string) {
 function getImpactLabel(impact: AxeImpact) {
   switch (impact) {
     case 'critical':
-      return 'Critique';
+      return 'Priorité critique';
     case 'serious':
-      return 'Serieux';
+      return 'Important';
     case 'moderate':
-      return 'Modere';
+      return 'À traiter';
     case 'minor':
-      return 'Mineur';
+      return 'Secondaire';
     default:
-      return 'A qualifier';
+      return 'À qualifier';
   }
 }
 
@@ -129,7 +129,7 @@ function getCategoryLabel(category: OpportunitySignalCategory) {
     case 'images_sans_alternative':
       return 'Images sans alternative';
     case 'structure_semantique':
-      return 'Structure semantique';
+      return 'Structure sémantique';
     case 'navigation_clavier':
       return 'Navigation clavier';
     case 'menus_modales_popups':
@@ -139,7 +139,7 @@ function getCategoryLabel(category: OpportunitySignalCategory) {
     case 'documents_pdf':
       return 'Documents PDF';
     case 'erreurs_recurrentes_globales':
-      return 'Erreurs recurrentes globales';
+      return 'Erreurs récurrentes globales';
     default:
       return category.replace(/_/g, ' ');
   }
@@ -186,7 +186,7 @@ function getRuleCategory(ruleId: string): OpportunitySignalCategory {
 }
 
 function getRuleTitle(ruleId: string) {
-  return axeRuleTranslations[ruleId]?.title ?? `Regle technique ${ruleId}`;
+  return axeRuleTranslations[ruleId]?.title ?? `Règle technique ${ruleId}`;
 }
 
 function getRuleDescription(
@@ -200,9 +200,70 @@ function getRuleDescription(
   }
 
   const categoryLabel = category ? getCategoryLabel(category).toLowerCase() : 'accessibilite';
-  const impactLabel = impact ? getImpactLabel(impact).toLowerCase() : 'a verifier';
+  const impactLabel = impact ? getImpactLabel(impact).toLowerCase() : 'à vérifier';
 
-  return `Cette regle technique signale un point a verifier sur la categorie ${categoryLabel}, avec un niveau de gravite ${impactLabel}.`;
+  return `Cette règle technique signale un point à vérifier sur la catégorie ${categoryLabel}, avec un niveau de gravité ${impactLabel}.`;
+}
+
+function extractReadableText(htmlSnippet: string) {
+  const plainText = htmlSnippet
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return plainText.length > 0 ? plainText : null;
+}
+
+function describeAffectedElement(selector: string, htmlSnippet: string, ruleId: string) {
+  const readableText = extractReadableText(htmlSnippet);
+  const lowerSelector = selector.toLowerCase();
+  const category = getRuleCategory(ruleId);
+
+  if (readableText) {
+    const shortText = readableText.length > 80 ? `${readableText.slice(0, 79)}…` : readableText;
+    return `Élément contenant le texte « ${shortText} ».`;
+  }
+
+  if (lowerSelector.includes('button')) {
+    return "Bouton ou élément d'action concerné.";
+  }
+
+  if (lowerSelector.includes('input') || lowerSelector.includes('select') || lowerSelector.includes('textarea') || lowerSelector.includes('form')) {
+    return 'Champ ou élément de formulaire concerné.';
+  }
+
+  if (lowerSelector.includes('img') || lowerSelector.includes('image')) {
+    return 'Image ou visuel concerné.';
+  }
+
+  if (lowerSelector.includes('link') || lowerSelector.includes('href') || lowerSelector.includes('a[')) {
+    return 'Lien ou élément cliquable concerné.';
+  }
+
+  if (lowerSelector.includes('menu') || lowerSelector.includes('nav')) {
+    return 'Élément de navigation concerné.';
+  }
+
+  if (lowerSelector.includes('dialog') || lowerSelector.includes('modal') || lowerSelector.includes('popup')) {
+    return 'Fenêtre, modale ou panneau interactif concerné.';
+  }
+
+  if (category === 'contraste') {
+    return 'Zone de texte ou élément visuel dont la lisibilité semble insuffisante.';
+  }
+
+  if (category === 'navigation_clavier') {
+    return "Élément interactif dont l'usage au clavier semble à vérifier.";
+  }
+
+  if (category === 'composants_interactifs') {
+    return 'Composant interactif concerné.';
+  }
+
+  return 'Zone précise du site concernée.';
 }
 
 function buildMetric(label: string, value: string, hint?: string) {
@@ -217,7 +278,7 @@ function buildMetric(label: string, value: string, hint?: string) {
 
 function buildList(items: string[]) {
   if (items.length === 0) {
-    return '<p class="empty">Aucun element disponible.</p>';
+    return "<p class=\"empty\">Aucun élément disponible.</p>";
   }
 
   return `<ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
@@ -278,10 +339,10 @@ function buildHtml(scan: Scan) {
         <div class="card">
           <h2>Violations par gravite</h2>
           <ul>
-            <li>Critiques: ${escapeHtml(String(axe.violationsByImpact.critical))}</li>
-            <li>Serieuses: ${escapeHtml(String(axe.violationsByImpact.serious))}</li>
-            <li>Moderees: ${escapeHtml(String(axe.violationsByImpact.moderate))}</li>
-            <li>Mineures: ${escapeHtml(String(axe.violationsByImpact.minor))}</li>
+            <li>Priorité critique : ${escapeHtml(String(axe.violationsByImpact.critical))}</li>
+            <li>Important : ${escapeHtml(String(axe.violationsByImpact.serious))}</li>
+            <li>À traiter : ${escapeHtml(String(axe.violationsByImpact.moderate))}</li>
+            <li>Secondaire : ${escapeHtml(String(axe.violationsByImpact.minor))}</li>
           </ul>
         </div>
         <div class="card">
@@ -294,13 +355,13 @@ function buildHtml(scan: Scan) {
                       `<li>${escapeHtml(getCategoryLabel(item.category))} - ${escapeHtml(String(item.count))}</li>`,
                   )
                   .join('')}</ul>`
-              : '<p class="empty">Aucune categorie dominante.</p>'
+              : '<p class="empty">Aucune catégorie dominante.</p>'
           }
         </div>
       </section>
 
       <section class="card">
-        <h2>Regles principales detectees</h2>
+        <h2>Règles principales détectées</h2>
         ${
           axe.topRules.length > 0
             ? axe.topRules
@@ -311,23 +372,30 @@ function buildHtml(scan: Scan) {
                         <strong>${escapeHtml(getRuleTitle(rule.ruleId))}</strong>
                         <span>${escapeHtml(getImpactLabel(rule.impact))} - ${escapeHtml(String(rule.occurrences))}</span>
                       </div>
-                      <p>${escapeHtml(getRuleDescription(rule.ruleId, getRuleCategory(rule.ruleId), rule.impact))}</p>
-                      <p class="muted">Identifiant technique: ${escapeHtml(rule.ruleId)}</p>
+                      <p>${escapeHtml(
+                        getRuleDescription(rule.ruleId, getRuleCategory(rule.ruleId), rule.impact),
+                      )}</p>
+                      <p class="muted">Identifiant technique : ${escapeHtml(rule.ruleId)}</p>
                       ${
                         rule.elements.length > 0
-                          ? `<p class="muted">Elements touches: ${escapeHtml(rule.elements.join(' | '))}</p>`
+                          ? `<ul>${rule.elements
+                              .map(
+                                (element) =>
+                                  `<li>${escapeHtml(describeAffectedElement(element, '', rule.ruleId))}</li>`,
+                              )
+                              .join('')}</ul>`
                           : ''
                       }
                     </div>
                   `,
                 )
                 .join('')
-            : '<p class="empty">Aucune violation axe-core remontee.</p>'
+            : '<p class="empty">Aucune violation axe-core remontée.</p>'
         }
       </section>
 
       <section class="card">
-        <h2>Elements touches</h2>
+        <h2>Zones concernées</h2>
         ${
           axe.highlightedElements.length > 0
             ? axe.highlightedElements
@@ -338,13 +406,23 @@ function buildHtml(scan: Scan) {
                         <strong>${escapeHtml(element.ruleId)}</strong>
                         <span>${escapeHtml(getImpactLabel(element.impact))}</span>
                       </div>
-                      <p>${escapeHtml(element.selector || 'Element sans selecteur exploitable')}</p>
-                      <p class="muted">${escapeHtml(element.htmlSnippet)}</p>
+                      <p>${escapeHtml(
+                        describeAffectedElement(
+                          element.selector,
+                          element.htmlSnippet,
+                          element.ruleId,
+                        ),
+                      )}</p>
+                      ${
+                        extractReadableText(element.htmlSnippet)
+                          ? `<p class="muted">Contenu repéré : « ${escapeHtml(extractReadableText(element.htmlSnippet))} »</p>`
+                          : ''
+                      }
                     </div>
                   `,
                 )
                 .join('')
-            : '<p class="empty">Aucun extrait d element disponible.</p>'
+            : "<p class=\"empty\">Aucun extrait d'élément disponible.</p>"
         }
       </section>
     `

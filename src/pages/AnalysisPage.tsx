@@ -14,12 +14,90 @@ type AnalysisLocationState = {
   scan?: Scan;
 };
 
+const axeRuleTranslations: Record<string, { title: string; description: string }> = {
+  'color-contrast': {
+    title: 'Contraste insuffisant',
+    description:
+      "Des contrastes de couleurs semblent insuffisants entre certains textes et leur arrière-plan, ce qui peut nuire à la lecture.",
+  },
+  'image-alt': {
+    title: 'Image sans alternative textuelle',
+    description:
+      "Certaines images importantes semblent dépourvues de texte alternatif exploitable pour les technologies d'assistance.",
+  },
+  'input-image-alt': {
+    title: 'Bouton image sans alternative',
+    description:
+      "Certains boutons illustrés ne semblent pas fournir de libellé textuel suffisant pour être compris correctement.",
+  },
+  label: {
+    title: 'Champ sans libellé explicite',
+    description:
+      'Certains champs de formulaire semblent manquer de libellé clair, ce qui peut compliquer leur utilisation.',
+  },
+  'button-name': {
+    title: 'Bouton sans nom explicite',
+    description:
+      "Certains boutons semblent ne pas exposer d'intitulé suffisamment clair pour les technologies d'assistance.",
+  },
+  'link-name': {
+    title: 'Lien sans intitulé explicite',
+    description:
+      'Certains liens semblent manquer de texte suffisamment descriptif pour indiquer clairement leur destination.',
+  },
+  'document-title': {
+    title: 'Titre de page insuffisant',
+    description:
+      "La page semble ne pas exposer un titre suffisamment clair, ce qui peut gêner la compréhension du contexte.",
+  },
+  'html-has-lang': {
+    title: 'Langue de page non déclarée',
+    description:
+      "La langue principale de la page semble absente ou mal déclarée, ce qui peut affecter la lecture par les aides techniques.",
+  },
+  bypass: {
+    title: 'Mécanisme de contournement absent',
+    description:
+      "Un moyen de contourner des blocs répétitifs, comme un lien d'évitement, semble manquer sur la page analysée.",
+  },
+  'heading-order': {
+    title: 'Ordre des titres à vérifier',
+    description:
+      'La hiérarchie des titres semble perfectible, ce qui peut rendre la structure de page moins lisible.',
+  },
+  'aria-dialog-name': {
+    title: 'Boîte de dialogue sans intitulé',
+    description:
+      "Certaines boîtes de dialogue semblent ne pas exposer de nom clair pour les technologies d'assistance.",
+  },
+  'select-name': {
+    title: 'Liste de sélection sans nom explicite',
+    description:
+      'Certaines listes de sélection semblent ne pas fournir de libellé suffisamment clair.',
+  },
+  'duplicate-id-aria': {
+    title: 'Identifiants ARIA dupliqués',
+    description:
+      "Des identifiants utilisés par des attributs ARIA semblent dupliqués, ce qui peut perturber l'interprétation de la page.",
+  },
+  'nested-interactive': {
+    title: 'Éléments interactifs imbriqués',
+    description:
+      'Des composants interactifs semblent imbriqués les uns dans les autres, ce qui peut rendre les interactions ambiguës.',
+  },
+  'frame-title': {
+    title: 'Cadre sans titre explicite',
+    description:
+      "Certains cadres ou contenus embarqués semblent ne pas exposer de titre suffisamment clair.",
+  },
+};
+
 function getCategoryLabel(category: OpportunitySignalCategory) {
   switch (category) {
     case 'images_sans_alternative':
       return 'Images sans alternative';
     case 'structure_semantique':
-      return 'Structure semantique';
+      return 'Structure sémantique';
     case 'navigation_clavier':
       return 'Navigation clavier';
     case 'menus_modales_popups':
@@ -29,7 +107,7 @@ function getCategoryLabel(category: OpportunitySignalCategory) {
     case 'documents_pdf':
       return 'Documents PDF';
     case 'erreurs_recurrentes_globales':
-      return 'Erreurs recurrentes globales';
+      return 'Erreurs récurrentes globales';
     default:
       return category.replace(/_/g, ' ');
   }
@@ -38,16 +116,128 @@ function getCategoryLabel(category: OpportunitySignalCategory) {
 function getImpactLabel(impact: AxeImpact) {
   switch (impact) {
     case 'critical':
-      return 'Critique';
+      return 'Priorité critique';
     case 'serious':
-      return 'Serieux';
+      return 'Important';
     case 'moderate':
-      return 'Modere';
+      return 'À traiter';
     case 'minor':
-      return 'Mineur';
+      return 'Secondaire';
     default:
-      return 'A qualifier';
+      return 'À qualifier';
   }
+}
+
+function getRuleCategory(ruleId: string): OpportunitySignalCategory {
+  const lowerRuleId = ruleId.toLowerCase();
+
+  if (lowerRuleId.includes('color-contrast')) {
+    return 'contraste';
+  }
+
+  if (/image-alt|input-image-alt|area-alt|object-alt|svg-img-alt|role-img-alt/.test(lowerRuleId)) {
+    return 'images_sans_alternative';
+  }
+
+  if (/label|form-field|autocomplete|select-name|input-button-name|button-name/.test(lowerRuleId)) {
+    return 'formulaires';
+  }
+
+  if (/bypass|accesskeys|focus|tabindex|skip-link/.test(lowerRuleId)) {
+    return 'navigation_clavier';
+  }
+
+  if (/aria-dialog-name|modal|popup|menuitem/.test(lowerRuleId)) {
+    return 'menus_modales_popups';
+  }
+
+  if (/aria-|link-name|nested-interactive|duplicate-id-aria|role/.test(lowerRuleId)) {
+    return 'composants_interactifs';
+  }
+
+  if (/caption|video|audio|track/.test(lowerRuleId)) {
+    return 'medias';
+  }
+
+  if (/document-title|heading|html-has-lang|landmark|list|definition-list|dlitem|region/.test(lowerRuleId)) {
+    return 'structure_semantique';
+  }
+
+  return 'erreurs_recurrentes_globales';
+}
+
+function getRuleTitle(ruleId: string) {
+  return axeRuleTranslations[ruleId]?.title ?? `Règle technique ${ruleId}`;
+}
+
+function getRuleDescription(ruleId: string, impact: AxeImpact) {
+  const translated = axeRuleTranslations[ruleId]?.description;
+  if (translated) {
+    return translated;
+  }
+
+  return `Cette règle technique signale un point à vérifier avec un niveau de gravité ${getImpactLabel(impact).toLowerCase()}.`;
+}
+
+function extractReadableText(htmlSnippet: string) {
+  const plainText = htmlSnippet
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return plainText.length > 0 ? plainText : null;
+}
+
+function describeAffectedElement(selector: string, htmlSnippet: string, ruleId: string) {
+  const readableText = extractReadableText(htmlSnippet);
+  const lowerSelector = selector.toLowerCase();
+  const category = getRuleCategory(ruleId);
+
+  if (readableText) {
+    const shortText = readableText.length > 80 ? `${readableText.slice(0, 79)}…` : readableText;
+    return `Élément contenant le texte « ${shortText} ».`;
+  }
+
+  if (lowerSelector.includes('button')) {
+    return "Bouton ou élément d'action concerné.";
+  }
+
+  if (lowerSelector.includes('input') || lowerSelector.includes('select') || lowerSelector.includes('textarea') || lowerSelector.includes('form')) {
+    return 'Champ ou élément de formulaire concerné.';
+  }
+
+  if (lowerSelector.includes('img') || lowerSelector.includes('image')) {
+    return 'Image ou visuel concerné.';
+  }
+
+  if (lowerSelector.includes('link') || lowerSelector.includes('href') || lowerSelector.includes('a[')) {
+    return 'Lien ou élément cliquable concerné.';
+  }
+
+  if (lowerSelector.includes('menu') || lowerSelector.includes('nav')) {
+    return 'Élément de navigation concerné.';
+  }
+
+  if (lowerSelector.includes('dialog') || lowerSelector.includes('modal') || lowerSelector.includes('popup')) {
+    return 'Fenêtre, modale ou panneau interactif concerné.';
+  }
+
+  if (category === 'contraste') {
+    return 'Zone de texte ou élément visuel dont la lisibilité semble insuffisante.';
+  }
+
+  if (category === 'navigation_clavier') {
+    return "Élément interactif dont l'usage au clavier semble à vérifier.";
+  }
+
+  if (category === 'composants_interactifs') {
+    return 'Composant interactif concerné.';
+  }
+
+  return 'Zone précise du site concernée.';
 }
 
 export default function AnalysisPage() {
@@ -268,16 +458,16 @@ export default function AnalysisPage() {
                       Date du scan: <span className="text-ivory">{formatDate(axeSummary.scannedAt)}</span>
                     </p>
                     <p>
-                      Violations critiques: <span className="text-ivory">{axeSummary.violationsByImpact.critical}</span>
+                      Priorité critique: <span className="text-ivory">{axeSummary.violationsByImpact.critical}</span>
                     </p>
                     <p>
-                      Violations serieuses: <span className="text-ivory">{axeSummary.violationsByImpact.serious}</span>
+                      Important: <span className="text-ivory">{axeSummary.violationsByImpact.serious}</span>
                     </p>
                     <p>
-                      Violations moderees: <span className="text-ivory">{axeSummary.violationsByImpact.moderate}</span>
+                      À traiter: <span className="text-ivory">{axeSummary.violationsByImpact.moderate}</span>
                     </p>
                     <p>
-                      Violations mineures: <span className="text-ivory">{axeSummary.violationsByImpact.minor}</span>
+                      Secondaire: <span className="text-ivory">{axeSummary.violationsByImpact.minor}</span>
                     </p>
                   </div>
                 </div>
@@ -297,8 +487,8 @@ export default function AnalysisPage() {
                         </span>
                       ))
                     ) : (
-                      <span className="text-sm text-ivory-muted">
-                        Aucune categorie dominante sur cette page.
+                        <span className="text-sm text-ivory-muted">
+                        Aucune catégorie dominante sur cette page.
                       </span>
                     )}
                   </div>
@@ -310,7 +500,7 @@ export default function AnalysisPage() {
           <section className="mt-8 grid gap-6 lg:grid-cols-[1.1fr,0.9fr]">
             <div>
               <p className="mb-4 text-xs uppercase tracking-[0.28em] text-copper-soft">
-                {axeSummary ? 'Regles principales detectees' : 'Preuves detectees'}
+                {axeSummary ? 'Règles principales détectées' : 'Preuves détectées'}
               </p>
               {axeSummary ? (
                 <div className="space-y-4">
@@ -322,7 +512,9 @@ export default function AnalysisPage() {
                       >
                         <div className="flex flex-wrap items-center justify-between gap-3">
                           <div>
-                            <p className="text-sm font-semibold text-ivory">{rule.help}</p>
+                            <p className="text-sm font-semibold text-ivory">
+                              {getRuleTitle(rule.ruleId)}
+                            </p>
                             <p className="mt-1 text-xs uppercase tracking-[0.2em] text-ivory-muted">
                               {rule.ruleId}
                             </p>
@@ -333,17 +525,19 @@ export default function AnalysisPage() {
                         </div>
 
                         <p className="mt-4 text-sm leading-7 text-ivory-muted">
-                          {rule.description}
+                          {getRuleDescription(rule.ruleId, rule.impact)}
                         </p>
 
                         {rule.elements.length > 0 ? (
                           <div className="mt-4 rounded-2xl border border-white/10 bg-ink-soft p-4">
                             <p className="text-xs uppercase tracking-[0.18em] text-ivory-muted">
-                              Elements touches
+                              Zones concernées
                             </p>
                             <ul className="mt-3 space-y-2 break-all text-sm text-ivory-muted">
                               {rule.elements.map((element) => (
-                                <li key={`${rule.ruleId}-${element}`}>{element}</li>
+                                <li key={`${rule.ruleId}-${element}`}>
+                                  {describeAffectedElement(element, '', rule.ruleId)}
+                                </li>
                               ))}
                             </ul>
                           </div>
@@ -361,7 +555,7 @@ export default function AnalysisPage() {
                     ))
                   ) : (
                     <div className="rounded-[24px] border border-dashed border-white/15 bg-white/5 p-6 text-sm text-ivory-muted">
-                      Aucune violation axe-core n'a ete remontee sur cette page.
+                      Aucune violation axe-core n'a été remontée sur cette page.
                     </div>
                   )}
                 </div>
@@ -387,7 +581,7 @@ export default function AnalysisPage() {
               {axeSummary ? (
                 <div className="rounded-[28px] border border-white/10 bg-white/5 p-6 shadow-panel">
                   <p className="text-xs uppercase tracking-[0.28em] text-copper-soft">
-                    Elements touches
+                    Zones concernées
                   </p>
                   <div className="mt-4 space-y-3">
                     {axeSummary.highlightedElements.length > 0 ? (
@@ -399,17 +593,23 @@ export default function AnalysisPage() {
                           <p className="text-xs uppercase tracking-[0.18em] text-copper-soft">
                             {element.ruleId} · {getImpactLabel(element.impact)}
                           </p>
-                          <p className="mt-2 break-all text-sm text-ivory">
-                            {element.selector || 'Element sans selecteur exploitable'}
+                          <p className="mt-2 text-sm text-ivory">
+                            {describeAffectedElement(
+                              element.selector,
+                              element.htmlSnippet,
+                              element.ruleId,
+                            )}
                           </p>
-                          <p className="mt-2 text-xs leading-6 text-ivory-muted">
-                            {element.htmlSnippet}
-                          </p>
+                          {extractReadableText(element.htmlSnippet) ? (
+                            <p className="mt-2 text-xs leading-6 text-ivory-muted">
+                              Contenu repéré : « {extractReadableText(element.htmlSnippet)} »
+                            </p>
+                          ) : null}
                         </div>
                       ))
                     ) : (
                       <p className="text-sm text-ivory-muted">
-                        Aucun extrait d element n'a pu etre remonte.
+                        Aucun extrait d'élément n'a pu être remonté.
                       </p>
                     )}
                   </div>
