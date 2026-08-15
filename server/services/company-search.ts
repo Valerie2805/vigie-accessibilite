@@ -3,6 +3,7 @@ import type { CompanySearchResult } from '../types.js';
 const SEARCH_API_URL = 'https://recherche-entreprises.api.gouv.fr/search';
 const SEARCH_RESULTS_PER_PAGE = 20;
 const SEARCH_MAX_PAGES = 10;
+
 const employeeRangeByTranche: Record<string, { min: number; max: number | null }> = {
   '00': { min: 0, max: 0 },
   '01': { min: 1, max: 2 },
@@ -73,6 +74,29 @@ function normalizeText(value: string) {
     .toLowerCase();
 }
 
+function normalizeNafCode(value: string) {
+  return value.replace(/\s+/g, '').toUpperCase();
+}
+
+function splitMultiValue(value?: string) {
+  if (!value?.trim()) {
+    return [];
+  }
+
+  return value
+    .split(/[;,]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function parseNafCodes(value?: string) {
+  return splitMultiValue(value).map((item) => normalizeNafCode(item));
+}
+
+function parseDepartments(value?: string) {
+  return splitMultiValue(value).map((item) => normalizeText(item));
+}
+
 function matchesCity(company: CompanySearchResult, city?: string) {
   if (!city?.trim()) {
     return true;
@@ -81,22 +105,7 @@ function matchesCity(company: CompanySearchResult, city?: string) {
   const normalizedCity = normalizeText(city);
   const candidateValues = [company.ville, company.adresse].filter(Boolean) as string[];
 
-  return candidateValues.some((value) => normalizeText(value).includes(normalizedCity));
-}
-
-function normalizeNafCode(value: string) {
-  return value.replace(/\s+/g, '').toUpperCase();
-}
-
-function parseNafCodes(value?: string) {
-  if (!value?.trim()) {
-    return [];
-  }
-
-  return value
-    .split(',')
-    .map((item) => normalizeNafCode(item.trim()))
-    .filter(Boolean);
+  return candidateValues.some((candidate) => normalizeText(candidate).includes(normalizedCity));
 }
 
 function matchesNafCode(company: CompanySearchResult, nafCode?: string) {
@@ -131,14 +140,17 @@ function inferDepartmentFromPostalCode(codePostal?: string | null) {
 }
 
 function matchesDepartment(company: CompanySearchResult, department?: string) {
-  if (!department?.trim()) {
+  const expectedDepartments = parseDepartments(department);
+  if (expectedDepartments.length === 0) {
     return true;
   }
 
-  const normalizedDepartment = normalizeText(department);
   const inferredDepartment = inferDepartmentFromPostalCode(company.codePostal);
+  if (!inferredDepartment) {
+    return false;
+  }
 
-  return normalizeText(inferredDepartment ?? '') === normalizedDepartment;
+  return expectedDepartments.includes(normalizeText(inferredDepartment));
 }
 
 function matchesMetier(company: CompanySearchResult, metier?: string) {
@@ -149,7 +161,9 @@ function matchesMetier(company: CompanySearchResult, metier?: string) {
   const normalizedMetier = normalizeText(metier);
   const candidateValues = [company.nom, company.adresse, company.activite].filter(Boolean) as string[];
 
-  return candidateValues.some((value) => normalizeText(value).includes(normalizedMetier));
+  return candidateValues.some((candidate) =>
+    normalizeText(candidate).includes(normalizedMetier),
+  );
 }
 
 function matchesRevenue(
@@ -242,6 +256,74 @@ function mapCompany(item: SearchApiResponse['results'][number]): CompanySearchRe
   };
 }
 
+async function fetchSearchPage(params: {
+  query?: string;
+  city?: string;
+  department?: string;
+  nafCode?: string;
+  page: number;
+}) {
+  const url = new URL(SEARCH_API_URL);
+
+  if (params.query?.trim()) {
+    url.searchParams.set('q', params.query.trim());
+  }
+
+  url.searchParams.set('page', String(params.page));
+  url.searchParams.set('per_page', String(SEARCH_RESULTS_PER_PAGE));
+
+  if (params.city?.trim()) {
+    url.searchParams.set('libelle_commune', params.city.trim());
+  }
+
+  if (params.department?.trim()) {
+    url.searchParams.set('departement', params.department.trim());
+  }
+
+  if (params.nafCode?.trim()) {
+    url.searchParams.set('activite_principale', normalizeNafCode(params.nafCode));
+  }
+
+  const response = await fetch(url, {
+    headers: {
+      accept: 'application/json',
+      'User-Agent': 'TraeAccessibilityMvp/0.1',
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Search API responded with ${response.status}`);
+  }
+
+  return (await response.json()) as SearchApiResponse;
+}
+
+function buildSearchCombos(params: {
+  query?: string;
+  city?: string;
+  department?: string;
+  nafCode?: string;
+}) {
+  const departments = parseDepartments(params.department);
+  const nafCodes = parseNafCodes(params.nafCode);
+
+  const departmentValues = departments.length > 0 ? departments : [''];
+  const nafValues = nafCodes.length > 0 ? nafCodes : [''];
+
+  const combos: Array<{ department?: string; nafCode?: string }> = [];
+
+  for (const department of departmentValues) {
+    for (const nafCode of nafValues) {
+      combos.push({
+        department: department || undefined,
+        nafCode: nafCode || undefined,
+      });
+    }
+  }
+
+  return combos;
+}
+
 export async function searchCompanies(
   query?: string,
   city?: string,
@@ -257,12 +339,19 @@ export async function searchCompanies(
   const cleanedMetier = metier?.trim() ?? '';
   const cleanedDepartment = department?.trim() ?? '';
   const cleanedNafCode = nafCode?.trim() ?? '';
+  const cleanedCity = city?.trim() ?? '';
 
-  if (!cleanedQuery && !cleanedMetier && !cleanedDepartment && !cleanedNafCode && !city?.trim()) {
+  if (
+    !cleanedQuery &&
+    !cleanedMetier &&
+    !cleanedDepartment &&
+    !cleanedNafCode &&
+    !cleanedCity
+  ) {
     return [];
   }
 
-  const combinedQuery = [cleanedQuery, cleanedMetier, city?.trim() ?? '']
+  const combinedQuery = [cleanedQuery, cleanedMetier, cleanedCity]
     .filter(Boolean)
     .join(' ')
     .trim();
@@ -270,52 +359,37 @@ export async function searchCompanies(
   try {
     const collectedResults: CompanySearchResult[] = [];
     const seenSirens = new Set<string>();
+    const combos = buildSearchCombos({
+      query: combinedQuery,
+      city: cleanedCity,
+      department: cleanedDepartment,
+      nafCode: cleanedNafCode,
+    });
 
-    for (let page = 1; page <= SEARCH_MAX_PAGES; page += 1) {
-      const url = new URL(SEARCH_API_URL);
-      if (combinedQuery) {
-        url.searchParams.set('q', combinedQuery);
-      }
-      url.searchParams.set('page', String(page));
-      url.searchParams.set('per_page', String(SEARCH_RESULTS_PER_PAGE));
+    for (const combo of combos) {
+      for (let page = 1; page <= SEARCH_MAX_PAGES; page += 1) {
+        const payload = await fetchSearchPage({
+          query: combinedQuery || undefined,
+          city: cleanedCity || undefined,
+          department: combo.department,
+          nafCode: combo.nafCode,
+          page,
+        });
 
-      if (city?.trim()) {
-        url.searchParams.set('libelle_commune', city.trim());
-      }
+        const pageResults = (payload.results ?? [])
+          .map(mapCompany)
+          .filter(Boolean) as CompanySearchResult[];
 
-      if (cleanedDepartment) {
-        url.searchParams.set('departement', cleanedDepartment);
-      }
-
-      if (cleanedNafCode) {
-        url.searchParams.set('activite_principale', cleanedNafCode);
-      }
-
-      const response = await fetch(url, {
-        headers: {
-          accept: 'application/json',
-          'User-Agent': 'TraeAccessibilityMvp/0.1',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Search API responded with ${response.status}`);
-      }
-
-      const payload = (await response.json()) as SearchApiResponse;
-      const pageResults = (payload.results ?? [])
-        .map(mapCompany)
-        .filter(Boolean) as CompanySearchResult[];
-
-      for (const company of pageResults) {
-        if (!seenSirens.has(company.siren)) {
-          seenSirens.add(company.siren);
-          collectedResults.push(company);
+        for (const company of pageResults) {
+          if (!seenSirens.has(company.siren)) {
+            seenSirens.add(company.siren);
+            collectedResults.push(company);
+          }
         }
-      }
 
-      if (pageResults.length < SEARCH_RESULTS_PER_PAGE) {
-        break;
+        if (pageResults.length < SEARCH_RESULTS_PER_PAGE) {
+          break;
+        }
       }
     }
 

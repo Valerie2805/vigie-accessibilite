@@ -487,7 +487,7 @@ export default function Home() {
                   value={department}
                   onChange={(event) => setDepartment(event.target.value)}
                   className="h-14 w-full rounded-2xl border border-white/10 bg-ink-soft px-4 text-sm text-ivory outline-none transition focus:border-copper/50"
-                  placeholder="75, 69, 13, 974..."
+                  placeholder="75, 92, 93 ou 974"
                 />
               </label>
             ) : (
