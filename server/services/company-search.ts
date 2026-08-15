@@ -84,6 +84,63 @@ function matchesCity(company: CompanySearchResult, city?: string) {
   return candidateValues.some((value) => normalizeText(value).includes(normalizedCity));
 }
 
+function normalizeNafCode(value: string) {
+  return value.replace(/\s+/g, '').toUpperCase();
+}
+
+function parseNafCodes(value?: string) {
+  if (!value?.trim()) {
+    return [];
+  }
+
+  return value
+    .split(',')
+    .map((item) => normalizeNafCode(item.trim()))
+    .filter(Boolean);
+}
+
+function matchesNafCode(company: CompanySearchResult, nafCode?: string) {
+  const expectedCodes = parseNafCodes(nafCode);
+  if (expectedCodes.length === 0) {
+    return true;
+  }
+
+  const companyNafCode = company.activite ? normalizeNafCode(company.activite) : null;
+  if (!companyNafCode) {
+    return false;
+  }
+
+  return expectedCodes.includes(companyNafCode);
+}
+
+function inferDepartmentFromPostalCode(codePostal?: string | null) {
+  if (!codePostal) {
+    return null;
+  }
+
+  const trimmedPostalCode = codePostal.trim();
+  if (trimmedPostalCode.length < 2) {
+    return null;
+  }
+
+  if (trimmedPostalCode.startsWith('97') || trimmedPostalCode.startsWith('98')) {
+    return trimmedPostalCode.slice(0, 3);
+  }
+
+  return trimmedPostalCode.slice(0, 2);
+}
+
+function matchesDepartment(company: CompanySearchResult, department?: string) {
+  if (!department?.trim()) {
+    return true;
+  }
+
+  const normalizedDepartment = normalizeText(department);
+  const inferredDepartment = inferDepartmentFromPostalCode(company.codePostal);
+
+  return normalizeText(inferredDepartment ?? '') === normalizedDepartment;
+}
+
 function matchesMetier(company: CompanySearchResult, metier?: string) {
   if (!metier?.trim()) {
     return true;
@@ -188,7 +245,9 @@ function mapCompany(item: SearchApiResponse['results'][number]): CompanySearchRe
 export async function searchCompanies(
   query?: string,
   city?: string,
+  department?: string,
   metier?: string,
+  nafCode?: string,
   minRevenue?: number,
   maxRevenue?: number,
   minEmployees?: number,
@@ -196,8 +255,10 @@ export async function searchCompanies(
 ) {
   const cleanedQuery = query?.trim() ?? '';
   const cleanedMetier = metier?.trim() ?? '';
+  const cleanedDepartment = department?.trim() ?? '';
+  const cleanedNafCode = nafCode?.trim() ?? '';
 
-  if (!cleanedQuery && !cleanedMetier) {
+  if (!cleanedQuery && !cleanedMetier && !cleanedDepartment && !cleanedNafCode && !city?.trim()) {
     return [];
   }
 
@@ -212,12 +273,22 @@ export async function searchCompanies(
 
     for (let page = 1; page <= SEARCH_MAX_PAGES; page += 1) {
       const url = new URL(SEARCH_API_URL);
-      url.searchParams.set('q', combinedQuery);
+      if (combinedQuery) {
+        url.searchParams.set('q', combinedQuery);
+      }
       url.searchParams.set('page', String(page));
       url.searchParams.set('per_page', String(SEARCH_RESULTS_PER_PAGE));
 
       if (city?.trim()) {
         url.searchParams.set('libelle_commune', city.trim());
+      }
+
+      if (cleanedDepartment) {
+        url.searchParams.set('departement', cleanedDepartment);
+      }
+
+      if (cleanedNafCode) {
+        url.searchParams.set('activite_principale', cleanedNafCode);
       }
 
       const response = await fetch(url, {
@@ -250,6 +321,8 @@ export async function searchCompanies(
 
     return collectedResults
       .filter((company) => matchesCity(company, city))
+      .filter((company) => matchesDepartment(company, department))
+      .filter((company) => matchesNafCode(company, nafCode))
       .filter((company) => matchesMetier(company, metier))
       .filter((company) => matchesRevenue(company, minRevenue, maxRevenue))
       .filter((company) => matchesEmployees(company, minEmployees, maxEmployees));
@@ -262,6 +335,8 @@ export async function searchCompanies(
       return (
         matchesQuery &&
         matchesCity(company, city) &&
+        matchesDepartment(company, department) &&
+        matchesNafCode(company, nafCode) &&
         matchesMetier(company, metier) &&
         matchesRevenue(company, minRevenue, maxRevenue) &&
         matchesEmployees(company, minEmployees, maxEmployees)

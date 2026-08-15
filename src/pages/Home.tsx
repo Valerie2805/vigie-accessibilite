@@ -21,36 +21,115 @@ import type { Company, EligibilityStatus, ScanStatus } from '@/types';
 type EligibilityFilter = 'tous' | EligibilityStatus;
 type AccessibilityFilter = 'tous' | 'sans_analyse' | ScanStatus;
 
+type ClientSearchPreset = {
+  value: string;
+  label: string;
+  group: string;
+  query?: string;
+  nafCodes?: string[];
+};
+
+const clientSearchPresets: ClientSearchPreset[] = [
+  {
+    value: 'agence-web',
+    label: 'Agence web',
+    group: 'Agences web',
+    query: 'agence web',
+  },
+  {
+    value: 'creation-site-internet',
+    label: 'Creation site internet',
+    group: 'Agences web',
+    query: 'creation site internet',
+  },
+  {
+    value: 'refonte-site-internet',
+    label: 'Refonte site internet',
+    group: 'Agences web',
+    query: 'refonte site internet',
+  },
+  {
+    value: 'studio-digital',
+    label: 'Studio digital',
+    group: 'Studios / freelances structures',
+    query: 'studio digital',
+  },
+  {
+    value: 'studio-web',
+    label: 'Studio web',
+    group: 'Studios / freelances structures',
+    query: 'studio web',
+  },
+  {
+    value: 'wordpress',
+    label: 'WordPress',
+    group: 'Studios / freelances structures',
+    query: 'WordPress',
+  },
+  {
+    value: 'site-vitrine',
+    label: 'Site vitrine',
+    group: 'Studios / freelances structures',
+    query: 'site vitrine',
+  },
+  {
+    value: 'communication-digitale',
+    label: 'Communication digitale',
+    group: 'Communication digitale',
+    query: 'communication digitale',
+  },
+  {
+    value: 'marketing-digital',
+    label: 'Marketing digital',
+    group: 'Communication digitale',
+    query: 'marketing digital',
+  },
+  {
+    value: 'strategie-digitale',
+    label: 'Strategie digitale',
+    group: 'Communication digitale',
+    query: 'strategie digitale',
+  },
+  {
+    value: 'bet',
+    label: "BET (Bureau d'etudes Techniques)",
+    group: 'BTP / ingenierie',
+    nafCodes: ['71.12B'],
+  },
+  {
+    value: 'entreprise-generale-construction',
+    label: 'Entreprise generale de construction',
+    group: 'BTP / ingenierie',
+    nafCodes: ['41.20A', '41.20B', '42.99Z'],
+  },
+  {
+    value: 'ingenierie-batiment',
+    label: 'Ingenierie du batiment',
+    group: 'BTP / ingenierie',
+    nafCodes: ['71.12B'],
+  },
+];
+
 const clientSearchOptions = [
   {
     label: 'Agences web',
-    keywords: [
-      'agence web',
-      'creation site internet',
-      'refonte site internet',
-    ],
+    options: clientSearchPresets.filter((option) => option.group === 'Agences web'),
   },
   {
     label: 'Studios / freelances structures',
-    keywords: ['studio digital', 'studio web', 'WordPress', 'site vitrine'],
+    options: clientSearchPresets.filter(
+      (option) => option.group === 'Studios / freelances structures',
+    ),
   },
   {
     label: 'Communication digitale',
-    keywords: [
-      'communication digitale',
-      'marketing digital',
-      'strategie digitale',
-    ],
+    options: clientSearchPresets.filter((option) => option.group === 'Communication digitale'),
   },
   {
     label: 'BTP / ingenierie',
-    keywords: [
-      "BET (Bureau d'etudes Techniques)",
-      'Entreprise generale de construction',
-      'Ingenierie du batiment',
-    ],
+    options: clientSearchPresets.filter((option) => option.group === 'BTP / ingenierie'),
   },
-] as const;
+];
 
 const activityOptions = [
   { value: '', label: 'Choisir une activite' },
@@ -78,9 +157,11 @@ export default function Home() {
   const [query, setQuery] = useState('');
   const [selectedClientSearch, setSelectedClientSearch] = useState('');
   const [city, setCity] = useState('');
-  const [searchScope, setSearchScope] = useState<'france' | 'city'>('france');
+  const [department, setDepartment] = useState('');
+  const [searchScope, setSearchScope] = useState<'france' | 'city' | 'department'>('france');
   const [selectedActivity, setSelectedActivity] = useState('');
   const [customActivity, setCustomActivity] = useState('');
+  const [nafCode, setNafCode] = useState('');
   const [minRevenue, setMinRevenue] = useState('');
   const [maxRevenue, setMaxRevenue] = useState('');
   const [minEmployees, setMinEmployees] = useState('');
@@ -96,6 +177,15 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
 
   const metier = selectedActivity === 'autre' ? customActivity : selectedActivity;
+  const selectedClientPreset = clientSearchPresets.find(
+    (option) => option.value === selectedClientSearch,
+  );
+  const hasSearchCriteria =
+    query.trim().length >= 2 ||
+    metier.trim().length >= 2 ||
+    nafCode.trim().length >= 4 ||
+    (searchScope === 'city' && city.trim().length >= 2) ||
+    (searchScope === 'department' && department.trim().length >= 2);
 
   const filteredResults = useMemo(() => {
     return results.filter((company) => {
@@ -167,7 +257,9 @@ export default function Home() {
       const response = await searchCompanies(
         query,
         searchScope === 'city' ? city : undefined,
+        searchScope === 'department' ? department : undefined,
         metier,
+        nafCode,
         minRevenue ? Number(minRevenue) : undefined,
         maxRevenue ? Number(maxRevenue) : undefined,
         minEmployees ? Number(minEmployees) : undefined,
@@ -281,7 +373,10 @@ export default function Home() {
                 value={query}
                 onChange={(event) => {
                   setQuery(event.target.value);
-                  if (event.target.value !== selectedClientSearch) {
+                  if (
+                    event.target.value !== selectedClientPreset?.query ||
+                    selectedClientPreset?.nafCodes?.length
+                  ) {
                     setSelectedClientSearch('');
                   }
                 }}
@@ -297,8 +392,13 @@ export default function Home() {
               <select
                 value={selectedClientSearch}
                 onChange={(event) => {
+                  const selectedOption = clientSearchPresets.find(
+                    (option) => option.value === event.target.value,
+                  );
+
                   setSelectedClientSearch(event.target.value);
-                  setQuery(event.target.value);
+                  setQuery(selectedOption?.query ?? '');
+                  setNafCode(selectedOption?.nafCodes?.join(',') ?? '');
                 }}
                 className="h-14 w-full rounded-2xl border border-white/10 bg-ink-soft px-4 text-sm text-ivory outline-none transition focus:border-copper/50"
               >
@@ -307,9 +407,13 @@ export default function Home() {
                 </option>
                 {clientSearchOptions.map((group) => (
                   <optgroup key={group.label} label={group.label}>
-                    {group.keywords.map((keyword) => (
-                      <option key={keyword} value={keyword} className="bg-ink text-ivory">
-                        {keyword}
+                    {group.options.map((option) => (
+                      <option
+                        key={option.value}
+                        value={option.value}
+                        className="bg-ink text-ivory"
+                      >
+                        {option.label}
                       </option>
                     ))}
                   </optgroup>
@@ -327,6 +431,7 @@ export default function Home() {
                   onClick={() => {
                     setSearchScope('france');
                     setCity('');
+                    setDepartment('');
                   }}
                   className={
                     searchScope === 'france'
@@ -347,6 +452,17 @@ export default function Home() {
                 >
                   Une ville
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setSearchScope('department')}
+                  className={
+                    searchScope === 'department'
+                      ? 'flex-1 rounded-xl bg-white/10 px-4 py-3 font-medium text-ivory'
+                      : 'flex-1 rounded-xl px-4 py-3 text-ivory-muted transition hover:text-ivory'
+                  }
+                >
+                  Un departement
+                </button>
               </div>
             </div>
 
@@ -360,6 +476,18 @@ export default function Home() {
                   onChange={(event) => setCity(event.target.value)}
                   className="h-14 w-full rounded-2xl border border-white/10 bg-ink-soft px-4 text-sm text-ivory outline-none transition focus:border-copper/50"
                   placeholder="Paris"
+                />
+              </label>
+            ) : searchScope === 'department' ? (
+              <label className="space-y-2">
+                <span className="text-xs uppercase tracking-[0.2em] text-ivory-muted">
+                  Departement
+                </span>
+                <input
+                  value={department}
+                  onChange={(event) => setDepartment(event.target.value)}
+                  className="h-14 w-full rounded-2xl border border-white/10 bg-ink-soft px-4 text-sm text-ivory outline-none transition focus:border-copper/50"
+                  placeholder="75, 69, 13, 974..."
                 />
               </label>
             ) : (
@@ -407,6 +535,23 @@ export default function Home() {
                 />
               </label>
             ) : null}
+
+            <label className="space-y-2">
+              <span className="text-xs uppercase tracking-[0.2em] text-ivory-muted">
+                Code NAF
+              </span>
+              <input
+                value={nafCode}
+                onChange={(event) => {
+                  setNafCode(event.target.value);
+                  if (selectedClientPreset?.nafCodes?.join(',') !== event.target.value) {
+                    setSelectedClientSearch('');
+                  }
+                }}
+                className="h-14 w-full rounded-2xl border border-white/10 bg-ink-soft px-4 text-sm text-ivory outline-none transition focus:border-copper/50"
+                placeholder="41.20B ou 71.12B,41.20A"
+              />
+            </label>
 
             <label className="space-y-2">
               <span className="text-xs uppercase tracking-[0.2em] text-ivory-muted">
@@ -473,8 +618,7 @@ export default function Home() {
             <button
               type="submit"
               disabled={
-                loading ||
-                (query.trim().length < 2 && metier.trim().length < 2)
+                loading || !hasSearchCriteria
               }
               className="inline-flex h-12 items-center gap-2 rounded-full bg-copper px-5 text-sm font-semibold text-ink transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
             >
@@ -487,8 +631,8 @@ export default function Home() {
             </button>
             <p className="text-sm text-ivory-muted">
               Recherche sur toute la France par defaut, puis filtrage optionnel par
-              ville, activite, chiffre d'affaires et nombre de salaries quand ces
-              donnees existent.
+              ville, departement, activite, code NAF, chiffre d'affaires et
+              nombre de salaries quand ces donnees existent.
             </p>
           </div>
 
@@ -742,7 +886,7 @@ export default function Home() {
           {!loading && filteredResults.length === 0 ? (
             <div className="rounded-[28px] border border-dashed border-white/15 bg-white/5 p-8 text-center text-sm text-ivory-muted">
               {results.length === 0
-                ? "Aucun resultat avec ces filtres. Essaie un metier plus large, une autre ville, ou retire les bornes de chiffre d'affaires."
+                ? "Aucun resultat avec ces filtres. Essaie un autre code NAF, une autre ville, un autre departement, ou retire certaines bornes."
                 : "Aucun resultat ne correspond aux filtres selectionnes. Essaie un autre statut ou un autre filtre accessibilite."}
             </div>
           ) : null}

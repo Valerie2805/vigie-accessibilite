@@ -35,7 +35,9 @@ router.get('/search', async (req, res, next) => {
   const schema = z.object({
     q: z.string().optional().default(''),
     city: z.string().optional(),
+    department: z.string().optional(),
     metier: z.string().optional(),
+    nafCode: z.string().optional(),
     minRevenue: z.coerce.number().nonnegative().optional(),
     maxRevenue: z.coerce.number().nonnegative().optional(),
     minEmployees: z.coerce.number().int().nonnegative().optional(),
@@ -44,10 +46,18 @@ router.get('/search', async (req, res, next) => {
 
   try {
     const params = schema.parse(req.query);
-    if (params.q.trim().length < 2 && (params.metier?.trim().length ?? 0) < 2) {
+    const hasEnoughCriteria =
+      params.q.trim().length >= 2 ||
+      (params.metier?.trim().length ?? 0) >= 2 ||
+      (params.nafCode?.trim().length ?? 0) >= 4 ||
+      (params.department?.trim().length ?? 0) >= 2 ||
+      (params.city?.trim().length ?? 0) >= 2;
+
+    if (!hasEnoughCriteria) {
       res.status(400).json({
         success: false,
-        error: 'Renseigne au moins un nom ou un metier sur 2 caracteres minimum',
+        error:
+          'Renseigne au moins un nom, un metier, un code NAF, une ville ou un departement',
       });
       return;
     }
@@ -55,7 +65,9 @@ router.get('/search', async (req, res, next) => {
     const results = await searchCompanies(
       params.q,
       params.city,
+      params.department,
       params.metier,
+      params.nafCode,
       params.minRevenue,
       params.maxRevenue,
       params.minEmployees,

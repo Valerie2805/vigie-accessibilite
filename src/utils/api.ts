@@ -40,7 +40,9 @@ async function request<T>(input: string, init?: RequestInit) {
 export async function searchCompanies(
   query?: string,
   city?: string,
+  department?: string,
   metier?: string,
+  nafCode?: string,
   minRevenue?: number,
   maxRevenue?: number,
   minEmployees?: number,
@@ -53,8 +55,14 @@ export async function searchCompanies(
   if (city?.trim()) {
     url.searchParams.set('city', city.trim());
   }
+  if (department?.trim()) {
+    url.searchParams.set('department', department.trim());
+  }
   if (metier?.trim()) {
     url.searchParams.set('metier', metier.trim());
+  }
+  if (nafCode?.trim()) {
+    url.searchParams.set('nafCode', nafCode.trim());
   }
   if (typeof minRevenue === 'number' && !Number.isNaN(minRevenue)) {
     url.searchParams.set('minRevenue', String(minRevenue));
