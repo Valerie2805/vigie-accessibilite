@@ -20,6 +20,7 @@ export type WebsiteResolution = {
   websiteUrl: string | null;
   source: 'google_places' | 'recherche_web' | 'manuel' | 'inconnue';
   confidence: 'haute' | 'moyenne' | 'faible';
+  websiteRedesignYear: number | null;
   notes: string[];
 };
 
@@ -27,6 +28,7 @@ export type CompanyRecord = CompanySearchResult & {
   websiteUrl: string | null;
   websiteSource: WebsiteResolution['source'];
   websiteConfidence: WebsiteResolution['confidence'];
+  websiteRedesignYear: number | null;
   websiteNotes: string[];
   email: string | null;
   emailSource: 'site' | 'snov' | 'inconnue';

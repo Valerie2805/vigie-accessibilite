@@ -3,6 +3,23 @@ import type { CompanySearchResult } from '../types.js';
 const SEARCH_API_URL = 'https://recherche-entreprises.api.gouv.fr/search';
 const SEARCH_RESULTS_PER_PAGE = 20;
 const SEARCH_MAX_PAGES = 10;
+const employeeRangeByTranche: Record<string, { min: number; max: number | null }> = {
+  '00': { min: 0, max: 0 },
+  '01': { min: 1, max: 2 },
+  '02': { min: 3, max: 5 },
+  '03': { min: 6, max: 9 },
+  '11': { min: 10, max: 19 },
+  '12': { min: 20, max: 49 },
+  '21': { min: 50, max: 99 },
+  '22': { min: 100, max: 199 },
+  '31': { min: 200, max: 249 },
+  '32': { min: 250, max: 499 },
+  '41': { min: 500, max: 999 },
+  '42': { min: 1000, max: 1999 },
+  '51': { min: 2000, max: 4999 },
+  '52': { min: 5000, max: 9999 },
+  '53': { min: 10000, max: null },
+};
 
 const demoCompanies: CompanySearchResult[] = [
   {
@@ -104,6 +121,33 @@ function matchesRevenue(
   return true;
 }
 
+function matchesEmployees(
+  company: CompanySearchResult,
+  minEmployees?: number,
+  maxEmployees?: number,
+) {
+  if (minEmployees === undefined && maxEmployees === undefined) {
+    return true;
+  }
+
+  const range =
+    (company.trancheEffectif && employeeRangeByTranche[company.trancheEffectif]) || null;
+
+  if (!range) {
+    return false;
+  }
+
+  if (minEmployees !== undefined && range.max !== null && range.max < minEmployees) {
+    return false;
+  }
+
+  if (maxEmployees !== undefined && range.min > maxEmployees) {
+    return false;
+  }
+
+  return true;
+}
+
 function pickLatestRevenue(
   finances?: Record<string, { ca?: number | null }>,
 ): number | null {
@@ -147,6 +191,8 @@ export async function searchCompanies(
   metier?: string,
   minRevenue?: number,
   maxRevenue?: number,
+  minEmployees?: number,
+  maxEmployees?: number,
 ) {
   const cleanedQuery = query?.trim() ?? '';
   const cleanedMetier = metier?.trim() ?? '';
@@ -205,7 +251,8 @@ export async function searchCompanies(
     return collectedResults
       .filter((company) => matchesCity(company, city))
       .filter((company) => matchesMetier(company, metier))
-      .filter((company) => matchesRevenue(company, minRevenue, maxRevenue));
+      .filter((company) => matchesRevenue(company, minRevenue, maxRevenue))
+      .filter((company) => matchesEmployees(company, minEmployees, maxEmployees));
   } catch {
     return demoCompanies.filter((company) => {
       const haystack = `${company.nom} ${company.siren} ${company.ville ?? ''}`.toLowerCase();
@@ -216,7 +263,8 @@ export async function searchCompanies(
         matchesQuery &&
         matchesCity(company, city) &&
         matchesMetier(company, metier) &&
-        matchesRevenue(company, minRevenue, maxRevenue)
+        matchesRevenue(company, minRevenue, maxRevenue) &&
+        matchesEmployees(company, minEmployees, maxEmployees)
       );
     });
   }

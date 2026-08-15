@@ -13,6 +13,7 @@ function normalizeCompany(company: Company, seenAt: string): Company {
     websiteUrl: company.websiteUrl ?? null,
     websiteSource: company.websiteSource ?? 'inconnue',
     websiteConfidence: company.websiteConfidence ?? 'faible',
+    websiteRedesignYear: company.websiteRedesignYear ?? null,
     email: company.email ?? null,
     lastSeenAt: company.lastSeenAt ?? seenAt,
     latestScanStatus: company.latestScanStatus ?? null,
@@ -41,6 +42,8 @@ function mergeCompany(existing: Company | undefined, incoming: Company, seenAt: 
     lastSeenAt: normalizedIncoming.lastSeenAt ?? existing.lastSeenAt ?? seenAt,
     trancheEffectif: normalizedIncoming.trancheEffectif ?? existing.trancheEffectif,
     ville: normalizedIncoming.ville ?? existing.ville,
+    websiteRedesignYear:
+      normalizedIncoming.websiteRedesignYear ?? existing.websiteRedesignYear ?? null,
     websiteConfidence: normalizedIncoming.websiteUrl
       ? normalizedIncoming.websiteConfidence
       : existing.websiteConfidence,

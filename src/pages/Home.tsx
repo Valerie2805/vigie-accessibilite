@@ -10,7 +10,12 @@ import {
 } from '@/utils/export-companies';
 import { saveRecentCompaniesToBrowser } from '@/utils/local-company-history';
 import { resolveWebsite, searchCompanies } from '@/utils/api';
-import { formatCurrency, getEligibilityLabel, getScanStatusLabel } from '@/utils/format';
+import {
+  formatCurrency,
+  getEffectifLabel,
+  getEligibilityLabel,
+  getScanStatusLabel,
+} from '@/utils/format';
 import type { Company, EligibilityStatus, ScanStatus } from '@/types';
 
 type EligibilityFilter = 'tous' | EligibilityStatus;
@@ -35,6 +40,14 @@ const clientSearchOptions = [
       'communication digitale',
       'marketing digital',
       'strategie digitale',
+    ],
+  },
+  {
+    label: 'BTP / ingenierie',
+    keywords: [
+      "BET (Bureau d'etudes Techniques)",
+      'Entreprise generale de construction',
+      'Ingenierie du batiment',
     ],
   },
 ] as const;
@@ -70,6 +83,8 @@ export default function Home() {
   const [customActivity, setCustomActivity] = useState('');
   const [minRevenue, setMinRevenue] = useState('');
   const [maxRevenue, setMaxRevenue] = useState('');
+  const [minEmployees, setMinEmployees] = useState('');
+  const [maxEmployees, setMaxEmployees] = useState('');
   const [eligibilityFilter, setEligibilityFilter] = useState<EligibilityFilter>('tous');
   const [accessibilityFilter, setAccessibilityFilter] =
     useState<AccessibilityFilter>('tous');
@@ -119,6 +134,7 @@ export default function Home() {
           websiteUrl: response.company.websiteUrl,
           websiteSource: response.company.websiteSource,
           websiteConfidence: response.company.websiteConfidence,
+          websiteRedesignYear: response.company.websiteRedesignYear,
           email: response.company.email,
           latestScanStatus: response.company.latestScanStatus ?? company.latestScanStatus ?? null,
           latestScannedAt: response.company.latestScannedAt ?? company.latestScannedAt ?? null,
@@ -154,6 +170,8 @@ export default function Home() {
         metier,
         minRevenue ? Number(minRevenue) : undefined,
         maxRevenue ? Number(maxRevenue) : undefined,
+        minEmployees ? Number(minEmployees) : undefined,
+        maxEmployees ? Number(maxEmployees) : undefined,
       );
       setResults(response.results);
       setSelectedSirens([]);
@@ -419,6 +437,36 @@ export default function Home() {
                 placeholder="5000000"
               />
             </label>
+
+            <label className="space-y-2">
+              <span className="text-xs uppercase tracking-[0.2em] text-ivory-muted">
+                Salaries minimum
+              </span>
+              <input
+                value={minEmployees}
+                onChange={(event) => setMinEmployees(event.target.value)}
+                type="number"
+                min="0"
+                step="1"
+                className="h-14 w-full rounded-2xl border border-white/10 bg-ink-soft px-4 text-sm text-ivory outline-none transition focus:border-copper/50"
+                placeholder="10"
+              />
+            </label>
+
+            <label className="space-y-2">
+              <span className="text-xs uppercase tracking-[0.2em] text-ivory-muted">
+                Salaries maximum
+              </span>
+              <input
+                value={maxEmployees}
+                onChange={(event) => setMaxEmployees(event.target.value)}
+                type="number"
+                min="0"
+                step="1"
+                className="h-14 w-full rounded-2xl border border-white/10 bg-ink-soft px-4 text-sm text-ivory outline-none transition focus:border-copper/50"
+                placeholder="250"
+              />
+            </label>
           </div>
 
           <div className="mt-5 flex flex-wrap items-center gap-3">
@@ -439,7 +487,8 @@ export default function Home() {
             </button>
             <p className="text-sm text-ivory-muted">
               Recherche sur toute la France par defaut, puis filtrage optionnel par
-              ville, activite et chiffre d'affaires quand ces donnees existent.
+              ville, activite, chiffre d'affaires et nombre de salaries quand ces
+              donnees existent.
             </p>
           </div>
 
@@ -608,6 +657,7 @@ export default function Home() {
                     <span>SIREN {company.siren}</span>
                     <span>{company.activite ?? 'NAF inconnu'}</span>
                     <span>{company.categorieEntreprise ?? 'Categorie inconnue'}</span>
+                    <span>{getEffectifLabel(company.trancheEffectif)}</span>
                   </div>
                   <div className="flex flex-wrap items-center gap-3 text-sm text-ivory-muted">
                     <span className="inline-flex items-center gap-2">
@@ -656,6 +706,22 @@ export default function Home() {
                     </p>
                     <p className="mt-2 text-lg text-ivory">
                       {company.ville ?? 'Non disponible'}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-ink-soft p-4">
+                    <p className="text-xs uppercase tracking-[0.18em] text-ivory-muted">
+                      Effectif
+                    </p>
+                    <p className="mt-2 text-lg text-ivory">
+                      {getEffectifLabel(company.trancheEffectif)}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-ink-soft p-4">
+                    <p className="text-xs uppercase tracking-[0.18em] text-ivory-muted">
+                      Annee refonte estimee
+                    </p>
+                    <p className="mt-2 text-lg text-ivory">
+                      {company.websiteRedesignYear ?? 'Non disponible'}
                     </p>
                   </div>
                 </div>

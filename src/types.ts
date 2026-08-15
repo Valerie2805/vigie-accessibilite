@@ -66,6 +66,7 @@ export type Company = {
   websiteUrl: string | null;
   websiteSource: 'google_places' | 'recherche_web' | 'manuel' | 'inconnue';
   websiteConfidence: 'haute' | 'moyenne' | 'faible';
+  websiteRedesignYear: number | null;
   email: string | null;
   lastSeenAt?: string;
   eligibility: EligibilityStatus;
@@ -78,6 +79,7 @@ export type WebsiteResolution = {
   websiteUrl: string | null;
   source: 'google_places' | 'recherche_web' | 'manuel' | 'inconnue';
   confidence: 'haute' | 'moyenne' | 'faible';
+  websiteRedesignYear: number | null;
   notes: string[];
 };
 

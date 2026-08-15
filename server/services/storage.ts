@@ -99,6 +99,7 @@ function normalizeCompanyRecord(company: Partial<CompanyRecord>): CompanyRecord 
     websiteUrl: company.websiteUrl ?? null,
     websiteSource: company.websiteSource ?? 'inconnue',
     websiteConfidence: company.websiteConfidence ?? 'faible',
+    websiteRedesignYear: company.websiteRedesignYear ?? null,
     websiteNotes: company.websiteNotes ?? [],
     email: company.email ?? null,
     emailSource: company.emailSource ?? 'inconnue',
@@ -373,6 +374,7 @@ function toCompanyRecord(company: CompanySearchResult): CompanyRecord {
     websiteUrl: null,
     websiteSource: 'inconnue',
     websiteConfidence: 'faible',
+    websiteRedesignYear: null,
     websiteNotes: [],
     email: null,
     emailSource: 'inconnue',
@@ -433,6 +435,7 @@ export async function setCompanyWebsite(siren: string, resolution: WebsiteResolu
     websiteUrl: resolution.websiteUrl,
     websiteSource: resolution.source,
     websiteConfidence: resolution.confidence,
+    websiteRedesignYear: resolution.websiteRedesignYear,
     websiteNotes: resolution.notes,
     lastSeenAt: new Date().toISOString(),
   });

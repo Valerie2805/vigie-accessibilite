@@ -1,4 +1,4 @@
-import { getEligibilityLabel, getScanStatusLabel } from '@/utils/format';
+import { getEffectifLabel, getEligibilityLabel, getScanStatusLabel } from '@/utils/format';
 import type { Company } from '@/types';
 
 type ExportRow = Record<string, string>;
@@ -40,12 +40,14 @@ function getRows(companies: Company[]): ExportRow[] {
     Ville: sanitizeCell(company.ville),
     Adresse: sanitizeCell(company.adresse),
     Activite: sanitizeCell(company.activite),
+    Effectif: getEffectifLabel(company.trancheEffectif),
     'Categorie entreprise': sanitizeCell(company.categorieEntreprise),
     'Chiffre affaires': company.chiffreAffaires === null ? '' : String(company.chiffreAffaires),
     Statut: getEligibilityLabel(company.eligibility),
     Accessibilite: company.latestScanStatus ? getScanStatusLabel(company.latestScanStatus) : '',
     'Date dernier scan': sanitizeCell(company.latestScannedAt),
     'Site internet': normalizeWebsiteUrl(company.websiteUrl),
+    'Annee refonte estimee': sanitizeCell(company.websiteRedesignYear),
     'Adresse email': normalizeEmail(company.email),
   }));
 }

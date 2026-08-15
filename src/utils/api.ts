@@ -43,6 +43,8 @@ export async function searchCompanies(
   metier?: string,
   minRevenue?: number,
   maxRevenue?: number,
+  minEmployees?: number,
+  maxEmployees?: number,
 ) {
   const url = new URL('/api/companies/search', window.location.origin);
   if (query?.trim()) {
@@ -59,6 +61,12 @@ export async function searchCompanies(
   }
   if (typeof maxRevenue === 'number' && !Number.isNaN(maxRevenue)) {
     url.searchParams.set('maxRevenue', String(maxRevenue));
+  }
+  if (typeof minEmployees === 'number' && !Number.isNaN(minEmployees)) {
+    url.searchParams.set('minEmployees', String(minEmployees));
+  }
+  if (typeof maxEmployees === 'number' && !Number.isNaN(maxEmployees)) {
+    url.searchParams.set('maxEmployees', String(maxEmployees));
   }
 
   return request<{ results: Company[] }>(url.toString());

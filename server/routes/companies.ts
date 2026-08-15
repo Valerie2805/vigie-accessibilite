@@ -38,6 +38,8 @@ router.get('/search', async (req, res, next) => {
     metier: z.string().optional(),
     minRevenue: z.coerce.number().nonnegative().optional(),
     maxRevenue: z.coerce.number().nonnegative().optional(),
+    minEmployees: z.coerce.number().int().nonnegative().optional(),
+    maxEmployees: z.coerce.number().int().nonnegative().optional(),
   });
 
   try {
@@ -56,6 +58,8 @@ router.get('/search', async (req, res, next) => {
       params.metier,
       params.minRevenue,
       params.maxRevenue,
+      params.minEmployees,
+      params.maxEmployees,
     );
 
     const storedCompanies = await upsertCompaniesFromSearch(results);
@@ -69,6 +73,7 @@ router.get('/search', async (req, res, next) => {
         websiteUrl: storedIndex.get(company.siren)?.websiteUrl ?? null,
         websiteSource: storedIndex.get(company.siren)?.websiteSource ?? 'inconnue',
         websiteConfidence: storedIndex.get(company.siren)?.websiteConfidence ?? 'faible',
+        websiteRedesignYear: storedIndex.get(company.siren)?.websiteRedesignYear ?? null,
         email: storedIndex.get(company.siren)?.email ?? null,
         eligibility: estimateEligibility(company),
         latestScanStatus: latestScanIndex.get(company.siren)?.status ?? null,
@@ -125,6 +130,7 @@ router.get('/:siren', async (req, res, next) => {
         websiteUrl: stored?.websiteUrl ?? null,
         websiteSource: stored?.websiteSource ?? 'inconnue',
         websiteConfidence: stored?.websiteConfidence ?? 'faible',
+        websiteRedesignYear: stored?.websiteRedesignYear ?? null,
         email: stored?.email ?? null,
         lastExportedAt: stored?.lastExportedAt ?? null,
         eligibility: estimateEligibility(company),
@@ -184,6 +190,7 @@ router.post('/resolve-website', async (req, res, next) => {
         websiteUrl: resolution.websiteUrl,
         websiteSource: resolution.source,
         websiteConfidence: resolution.confidence,
+        websiteRedesignYear: storedAfter?.websiteRedesignYear ?? resolution.websiteRedesignYear,
         email: storedAfter?.email ?? null,
         emailSource: storedAfter?.email ? storedAfter.emailSource : emailSource,
         lastExportedAt: storedAfter?.lastExportedAt ?? null,

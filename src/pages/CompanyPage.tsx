@@ -43,6 +43,7 @@ export default function CompanyPage() {
           websiteUrl: response.company.websiteUrl,
           source: response.company.websiteSource,
           confidence: response.company.websiteConfidence,
+          websiteRedesignYear: response.company.websiteRedesignYear,
           notes: [],
         });
       } catch (requestError) {
@@ -243,24 +244,24 @@ export default function CompanyPage() {
                   )}
                 </div>
 
-                  <div className="rounded-2xl border border-white/10 bg-ink-soft p-4">
-                    <p className="text-xs uppercase tracking-[0.18em] text-ivory-muted">
-                      Email detecte
-                    </p>
-                    <div className="mt-2 flex items-center gap-2 text-base text-ivory">
-                      <Mail className="h-4 w-4 text-copper-soft" />
-                      {company.email ? (
-                        <a
-                          href={`mailto:${company.email}`}
-                          className="break-all text-copper-soft transition hover:text-copper"
-                        >
-                          {company.email}
-                        </a>
-                      ) : (
-                        <span className="text-ivory">Email non trouve</span>
-                      )}
-                    </div>
+                <div className="rounded-2xl border border-white/10 bg-ink-soft p-4">
+                  <p className="text-xs uppercase tracking-[0.18em] text-ivory-muted">
+                    Email detecte
+                  </p>
+                  <div className="mt-2 flex items-center gap-2 text-base text-ivory">
+                    <Mail className="h-4 w-4 text-copper-soft" />
+                    {company.email ? (
+                      <a
+                        href={`mailto:${company.email}`}
+                        className="break-all text-copper-soft transition hover:text-copper"
+                      >
+                        {company.email}
+                      </a>
+                    ) : (
+                      <span className="text-ivory">Email non trouve</span>
+                    )}
                   </div>
+                </div>
 
                 <div className="rounded-2xl border border-white/10 bg-ink-soft p-4">
                   <p className="text-xs uppercase tracking-[0.18em] text-ivory-muted">
