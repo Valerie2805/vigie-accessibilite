@@ -180,6 +180,7 @@ export default function Home() {
   const selectedClientPreset = clientSearchPresets.find(
     (option) => option.value === selectedClientSearch,
   );
+
   const hasSearchCriteria =
     query.trim().length >= 2 ||
     metier.trim().length >= 2 ||
@@ -216,33 +217,41 @@ export default function Home() {
     setEnriching(true);
     setError(null);
 
+    let failureCount = 0;
+
     try {
       for (const company of targets) {
-        const response = await resolveWebsite(company.siren, company.websiteUrl ?? undefined);
-        const updatedCompany = {
-          ...company,
-          websiteUrl: response.company.websiteUrl,
-          websiteSource: response.company.websiteSource,
-          websiteConfidence: response.company.websiteConfidence,
-          websiteRedesignYear: response.company.websiteRedesignYear,
-          email: response.company.email,
-          latestScanStatus: response.company.latestScanStatus ?? company.latestScanStatus ?? null,
-          latestScannedAt: response.company.latestScannedAt ?? company.latestScannedAt ?? null,
-        };
+        try {
+          const response = await resolveWebsite(company.siren, company.websiteUrl ?? undefined);
+          const updatedCompany = {
+            ...company,
+            websiteUrl: response.company.websiteUrl,
+            websiteSource: response.company.websiteSource,
+            websiteConfidence: response.company.websiteConfidence,
+            websiteRedesignYear: response.company.websiteRedesignYear,
+            email: response.company.email,
+            latestScanStatus:
+              response.company.latestScanStatus ?? company.latestScanStatus ?? null,
+            latestScannedAt:
+              response.company.latestScannedAt ?? company.latestScannedAt ?? null,
+          };
 
-        setResults((current) =>
-          current.map((item) =>
-            item.siren === company.siren ? updatedCompany : item,
-          ),
-        );
-        saveRecentCompaniesToBrowser([updatedCompany]);
+          setResults((current) =>
+            current.map((item) => (item.siren === company.siren ? updatedCompany : item)),
+          );
+          saveRecentCompaniesToBrowser([updatedCompany]);
+        } catch {
+          failureCount += 1;
+        }
       }
-    } catch (requestError) {
-      setError(
-        requestError instanceof Error
-          ? requestError.message
-          : "Impossible de completer les sites.",
-      );
+
+      if (failureCount > 0) {
+        setError(
+          `Impossible de completer ${failureCount} entreprise${
+            failureCount > 1 ? 's' : ''
+          } pour le moment. Clique de nouveau sur "Completer les sites" pour relancer les recherches restantes.`,
+        );
+      }
     } finally {
       setEnriching(false);
     }
@@ -268,7 +277,6 @@ export default function Home() {
       setResults(response.results);
       setSelectedSirens([]);
       saveRecentCompaniesToBrowser(response.results);
-      void enrichCompanies(response.results);
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -617,16 +625,10 @@ export default function Home() {
           <div className="mt-5 flex flex-wrap items-center gap-3">
             <button
               type="submit"
-              disabled={
-                loading || !hasSearchCriteria
-              }
+              disabled={loading || !hasSearchCriteria}
               className="inline-flex h-12 items-center gap-2 rounded-full bg-copper px-5 text-sm font-semibold text-ink transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {loading ? (
-                <Spinner />
-              ) : (
-                <Radar className="h-4 w-4" />
-              )}
+              {loading ? <Spinner /> : <Radar className="h-4 w-4" />}
               Lancer la recherche
             </button>
             <p className="text-sm text-ivory-muted">
@@ -712,16 +714,10 @@ export default function Home() {
                 <option value="elements_partiels" className="bg-ink text-ivory">
                   {getScanStatusLabel('elements_partiels')}
                 </option>
-                <option
-                  value="conformite_non_demontree"
-                  className="bg-ink text-ivory"
-                >
+                <option value="conformite_non_demontree" className="bg-ink text-ivory">
                   {getScanStatusLabel('conformite_non_demontree')}
                 </option>
-                <option
-                  value="a_verifier_manuellement"
-                  className="bg-ink text-ivory"
-                >
+                <option value="a_verifier_manuellement" className="bg-ink text-ivory">
                   {getScanStatusLabel('a_verifier_manuellement')}
                 </option>
                 <option value="sans_analyse" className="bg-ink text-ivory">
@@ -759,8 +755,8 @@ export default function Home() {
               disabled={
                 enriching ||
                 results.length === 0 ||
-                results.every((company) => company.websiteUrl && company.email)
-                || exporting
+                results.every((company) => company.websiteUrl && company.email) ||
+                exporting
               }
               className="inline-flex h-10 items-center gap-2 rounded-full border border-moss/40 bg-moss/10 px-4 text-sm text-moss transition hover:border-moss hover:bg-moss hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
             >
