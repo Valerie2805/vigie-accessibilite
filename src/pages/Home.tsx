@@ -16,7 +16,7 @@ import {
   getEligibilityLabel,
   getScanStatusLabel,
 } from '@/utils/format';
-import type { Company, EligibilityStatus, RgaaProspectLevel, ScanStatus } from '@/types';
+import type { Company, EligibilityStatus, ScanStatus } from '@/types';
 
 type EligibilityFilter = 'tous' | EligibilityStatus;
 type AccessibilityFilter = 'tous' | 'sans_analyse' | ScanStatus;
@@ -27,9 +27,92 @@ type ClientSearchPreset = {
   group: string;
   query?: string;
   nafCodes?: string[];
+  helperText?: string;
 };
 
 const RGAA_KEYWORDS_DOWNLOAD_URL = '/mots-cles-prospects-rgaa.csv';
+const ACCESSIBILITY_PROSPECT_NAF_CODES = [
+  '62.01Z',
+  '62.02A',
+  '62.02B',
+  '70.22Z',
+  '74.10Z',
+  '85.59A',
+];
+const ACCESSIBILITY_PROSPECT_KEYWORDS: Array<{ keyword: string; weight: number }> = [
+  { keyword: 'accessibil', weight: 8 },
+  { keyword: 'rgaa', weight: 10 },
+  { keyword: 'wcag', weight: 10 },
+  { keyword: 'a11y', weight: 10 },
+  { keyword: 'handicap', weight: 6 },
+  { keyword: 'inclus', weight: 5 },
+  { keyword: 'audit', weight: 4 },
+  { keyword: 'conformit', weight: 4 },
+  { keyword: 'formation', weight: 3 },
+  { keyword: 'ergonomi', weight: 3 },
+  { keyword: 'ux', weight: 2 },
+  { keyword: 'ui', weight: 2 },
+];
+
+function normalizeText(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
+}
+
+function getAccessibilityProspectPriority(company: Company) {
+  const haystack = normalizeText(
+    [company.nom, company.activite, company.adresse, company.websiteUrl, company.email]
+      .filter(Boolean)
+      .join(' '),
+  );
+
+  let score = 0;
+
+  for (const rule of ACCESSIBILITY_PROSPECT_KEYWORDS) {
+    if (haystack.includes(rule.keyword)) {
+      score += rule.weight;
+    }
+  }
+
+  if (company.websiteUrl) {
+    score += 1;
+  }
+
+  if (company.email) {
+    score += 1;
+  }
+
+  return score;
+}
+
+function sortCompaniesForPreset(companies: Company[], preset?: ClientSearchPreset) {
+  if (!preset || preset.group !== 'Prospects accessibilite') {
+    return companies;
+  }
+
+  return [...companies].sort((left, right) => {
+    const scoreDifference =
+      getAccessibilityProspectPriority(right) - getAccessibilityProspectPriority(left);
+    if (scoreDifference !== 0) {
+      return scoreDifference;
+    }
+
+    const websiteDifference = Number(Boolean(right.websiteUrl)) - Number(Boolean(left.websiteUrl));
+    if (websiteDifference !== 0) {
+      return websiteDifference;
+    }
+
+    const revenueDifference = (right.chiffreAffaires ?? 0) - (left.chiffreAffaires ?? 0);
+    if (revenueDifference !== 0) {
+      return revenueDifference;
+    }
+
+    return left.nom.localeCompare(right.nom, 'fr');
+  });
+}
 
 const clientSearchPresets: ClientSearchPreset[] = [
   {
@@ -111,52 +194,68 @@ const clientSearchPresets: ClientSearchPreset[] = [
     nafCodes: ['71.12B'],
   },
   {
-    value: 'accessibilite-numerique',
+    value: 'prestataires-accessibilite-large',
+    label: 'Prestataires accessibilite (large)',
+    group: 'Prospects accessibilite',
+    nafCodes: ACCESSIBILITY_PROSPECT_NAF_CODES,
+    helperText:
+      "Recherche large dans les secteurs web, conseil, design et formation. Utilise ensuite les filtres deja presents comme ville, departement et effectif pour resserrer.",
+  },
+  {
+    value: 'agences-esn-accessibilite',
+    label: 'Agences / ESN / dev web',
+    group: 'Prospects accessibilite',
+    nafCodes: ['62.01Z', '62.02A', '62.02B'],
+    helperText:
+      "Cible les agences web, studios techniques et ESN susceptibles de proposer une offre accessibilite.",
+  },
+  {
+    value: 'conseil-formation-accessibilite',
+    label: 'Conseil / formation',
+    group: 'Prospects accessibilite',
+    nafCodes: ['70.22Z', '85.59A'],
+    helperText:
+      "Cible les cabinets de conseil et organismes de formation qui peuvent vendre des audits, accompagnements ou sensibilisations.",
+  },
+  {
+    value: 'design-ux-inclusif',
+    label: 'Design / UX inclusif',
+    group: 'Prospects accessibilite',
+    nafCodes: ['74.10Z'],
+    helperText:
+      "Cible les studios design, UX et UI qui peuvent etre sensibles aux sujets d'inclusion et d'accessibilite numerique.",
+  },
+  {
+    value: 'rgaa-mot-cle',
+    label: 'RGAA (mot-cle exact)',
+    group: 'Prospects accessibilite',
+    query: 'RGAA',
+    helperText:
+      "Recherche tres stricte. A utiliser seulement si tu veux des structures qui mentionnent explicitement RGAA dans leur fiche.",
+  },
+  {
+    value: 'accessibilite-numerique-mot-cle',
     label: 'Accessibilite numerique',
     group: 'Prospects accessibilite',
     query: 'accessibilite numerique',
+    helperText:
+      "Recherche textuelle plus stricte que le preset large. Utile pour retrouver des structures qui emploient deja ce vocabulaire.",
   },
   {
-    value: 'rgaa',
-    label: 'RGAA',
-    group: 'Prospects accessibilite',
-    query: 'RGAA',
-  },
-  {
-    value: 'audit-rgaa',
+    value: 'audit-rgaa-mot-cle',
     label: 'Audit RGAA',
     group: 'Prospects accessibilite',
     query: 'audit RGAA',
+    helperText:
+      "Recherche textuelle tres ciblee pour les prestataires qui affichent explicitement cette offre.",
   },
   {
-    value: 'mise-en-conformite-rgaa',
-    label: 'Mise en conformite RGAA',
-    group: 'Prospects accessibilite',
-    query: 'mise en conformite RGAA',
-  },
-  {
-    value: 'formation-rgaa',
-    label: 'Formation RGAA',
-    group: 'Prospects accessibilite',
-    query: 'formation RGAA',
-  },
-  {
-    value: 'wcag',
+    value: 'wcag-mot-cle',
     label: 'WCAG',
     group: 'Prospects accessibilite',
     query: 'WCAG accessibilite',
-  },
-  {
-    value: 'design-inclusif',
-    label: 'Design inclusif',
-    group: 'Prospects accessibilite',
-    query: 'design inclusif accessibilite',
-  },
-  {
-    value: 'referent-accessibilite',
-    label: 'Referent accessibilite',
-    group: 'Prospects accessibilite',
-    query: 'referent accessibilite numerique',
+    helperText:
+      "Recherche textuelle utile pour les acteurs plus internationaux ou plus techniques.",
   },
 ];
 
@@ -208,32 +307,6 @@ const activityOptions = [
   { value: 'livres numeriques', label: 'Livres numeriques' },
   { value: 'autre', label: 'Autre activite' },
 ] as const;
-
-function getRgaaProspectLabel(level: RgaaProspectLevel | undefined) {
-  switch (level) {
-    case 'fort_probable':
-      return 'Fort probable';
-    case 'probable':
-      return 'Probable';
-    case 'faible':
-      return 'Faible';
-    default:
-      return 'A verifier';
-  }
-}
-
-function getRgaaProspectClasses(level: RgaaProspectLevel | undefined) {
-  switch (level) {
-    case 'fort_probable':
-      return 'border-emerald-400/40 bg-emerald-400/10 text-emerald-200';
-    case 'probable':
-      return 'border-copper/40 bg-copper/10 text-copper-soft';
-    case 'faible':
-      return 'border-white/20 bg-white/5 text-ivory-muted';
-    default:
-      return 'border-white/10 bg-white/5 text-ivory-muted';
-  }
-}
 
 export default function Home() {
   const [query, setQuery] = useState('');
@@ -310,7 +383,6 @@ export default function Home() {
             websiteConfidence: response.company.websiteConfidence,
             websiteRedesignYear: response.company.websiteRedesignYear,
             email: response.company.email,
-            rgaaProspectScore: response.company.rgaaProspectScore ?? company.rgaaProspectScore ?? null,
             latestScanStatus:
               response.company.latestScanStatus ?? company.latestScanStatus ?? null,
             latestScannedAt:
@@ -357,9 +429,10 @@ export default function Home() {
         minEmployees ? Number(minEmployees) : undefined,
         maxEmployees ? Number(maxEmployees) : undefined,
       );
-      setResults(response.results);
+      const sortedResults = sortCompaniesForPreset(response.results, selectedClientPreset);
+      setResults(sortedResults);
       setSelectedSirens([]);
-      saveRecentCompaniesToBrowser(response.results);
+      saveRecentCompaniesToBrowser(sortedResults);
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -517,6 +590,11 @@ export default function Home() {
               >
                 Telecharger la liste Excel compatible des mots-cles RGAA
               </a>
+              {selectedClientPreset?.helperText ? (
+                <p className="pt-2 text-sm leading-6 text-ivory-muted">
+                  {selectedClientPreset.helperText}
+                </p>
+              ) : null}
             </label>
 
             <div className="space-y-2">
@@ -585,7 +663,7 @@ export default function Home() {
                   value={department}
                   onChange={(event) => setDepartment(event.target.value)}
                   className="h-14 w-full rounded-2xl border border-white/10 bg-ink-soft px-4 text-sm text-ivory outline-none transition focus:border-copper/50"
-                  placeholder="75, 92, 93 ou 974"
+                  placeholder="75, 69, 13, 974..."
                 />
               </label>
             ) : (
@@ -715,16 +793,24 @@ export default function Home() {
           <div className="mt-5 flex flex-wrap items-center gap-3">
             <button
               type="submit"
-              disabled={loading || !hasSearchCriteria}
+              disabled={
+                loading || !hasSearchCriteria
+              }
               className="inline-flex h-12 items-center gap-2 rounded-full bg-copper px-5 text-sm font-semibold text-ink transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {loading ? <Spinner /> : <Radar className="h-4 w-4" />}
+              {loading ? (
+                <Spinner />
+              ) : (
+                <Radar className="h-4 w-4" />
+              )}
               Lancer la recherche
             </button>
             <p className="text-sm text-ivory-muted">
               Recherche sur toute la France par defaut, puis filtrage optionnel par
               ville, departement, activite, code NAF, chiffre d'affaires et
-              nombre de salaries quand ces donnees existent.
+              nombre de salaries quand ces donnees existent. Pour les presets
+              `Prospects accessibilite`, commence par `Prestataires accessibilite (large)`
+              puis resserre avec tes filtres existants.
             </p>
           </div>
 
@@ -804,10 +890,16 @@ export default function Home() {
                 <option value="elements_partiels" className="bg-ink text-ivory">
                   {getScanStatusLabel('elements_partiels')}
                 </option>
-                <option value="conformite_non_demontree" className="bg-ink text-ivory">
+                <option
+                  value="conformite_non_demontree"
+                  className="bg-ink text-ivory"
+                >
                   {getScanStatusLabel('conformite_non_demontree')}
                 </option>
-                <option value="a_verifier_manuellement" className="bg-ink text-ivory">
+                <option
+                  value="a_verifier_manuellement"
+                  className="bg-ink text-ivory"
+                >
                   {getScanStatusLabel('a_verifier_manuellement')}
                 </option>
                 <option value="sans_analyse" className="bg-ink text-ivory">
@@ -845,8 +937,8 @@ export default function Home() {
               disabled={
                 enriching ||
                 results.length === 0 ||
-                results.every((company) => company.websiteUrl && company.email) ||
-                exporting
+                results.every((company) => company.websiteUrl && company.email)
+                || exporting
               }
               className="inline-flex h-10 items-center gap-2 rounded-full border border-moss/40 bg-moss/10 px-4 text-sm text-moss transition hover:border-moss hover:bg-moss hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
             >
@@ -871,7 +963,6 @@ export default function Home() {
                 />
                 Selectionner pour export
               </label>
-
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div className="space-y-3">
                   <div className="flex flex-wrap items-center gap-3">
@@ -880,39 +971,16 @@ export default function Home() {
                     {company.latestScanStatus ? (
                       <StatusBadge status={company.latestScanStatus} type="scan" />
                     ) : null}
-                    <span
-                      className={`inline-flex items-center rounded-full border px-3 py-1 text-xs uppercase tracking-[0.18em] ${getRgaaProspectClasses(
-                        company.rgaaProspectScore?.level,
-                      )}`}
-                    >
-                      Score RGAA {getRgaaProspectLabel(company.rgaaProspectScore?.level)}
-                    </span>
                   </div>
-
                   <p className="text-sm text-ivory-muted">
                     {company.adresse ?? 'Adresse non disponible'}
                   </p>
-
                   <div className="flex flex-wrap gap-3 text-xs uppercase tracking-[0.18em] text-ivory-muted">
                     <span>SIREN {company.siren}</span>
                     <span>{company.activite ?? 'NAF inconnu'}</span>
                     <span>{company.categorieEntreprise ?? 'Categorie inconnue'}</span>
                     <span>{getEffectifLabel(company.trancheEffectif)}</span>
                   </div>
-
-                  {company.rgaaProspectScore?.signals?.length ? (
-                    <div className="flex flex-wrap gap-2">
-                      {company.rgaaProspectScore.signals.slice(0, 4).map((signal) => (
-                        <span
-                          key={signal}
-                          className="rounded-full border border-copper/30 bg-copper/10 px-3 py-1 text-xs text-copper-soft"
-                        >
-                          {signal}
-                        </span>
-                      ))}
-                    </div>
-                  ) : null}
-
                   <div className="flex flex-wrap items-center gap-3 text-sm text-ivory-muted">
                     <span className="inline-flex items-center gap-2">
                       <Globe className="h-4 w-4 text-copper-soft" />
