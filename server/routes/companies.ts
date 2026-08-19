@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { resolveCompanyEmail } from '../services/company-email-resolver.js';
 import { getCompanyBySiren, searchCompanies } from '../services/company-search.js';
+import { scoreRgaaProspect } from '../services/rgaa-prospect-scorer.js';
 import { estimateEligibility } from '../services/scoring.js';
 import {
   getCompanyFromStorage,
@@ -78,19 +79,30 @@ router.get('/search', async (req, res, next) => {
     const storedIndex = new Map(storedCompanies.map((company) => [company.siren, company]));
     const latestScanIndex = await getLatestScanIndex();
 
+    const enrichedResults = await Promise.all(
+      results.map(async (company) => {
+        const storedCompany = storedIndex.get(company.siren);
+        const websiteUrl = storedCompany?.websiteUrl ?? null;
+        const rgaaProspectScore = await scoreRgaaProspect(websiteUrl);
+
+        return {
+          ...company,
+          websiteUrl,
+          websiteSource: storedCompany?.websiteSource ?? 'inconnue',
+          websiteConfidence: storedCompany?.websiteConfidence ?? 'faible',
+          websiteRedesignYear: storedCompany?.websiteRedesignYear ?? null,
+          email: storedCompany?.email ?? null,
+          eligibility: estimateEligibility(company),
+          latestScanStatus: latestScanIndex.get(company.siren)?.status ?? null,
+          latestScannedAt: latestScanIndex.get(company.siren)?.scannedAt ?? null,
+          rgaaProspectScore,
+        };
+      }),
+    );
+
     res.json({
       success: true,
-      results: results.map((company) => ({
-        ...company,
-        websiteUrl: storedIndex.get(company.siren)?.websiteUrl ?? null,
-        websiteSource: storedIndex.get(company.siren)?.websiteSource ?? 'inconnue',
-        websiteConfidence: storedIndex.get(company.siren)?.websiteConfidence ?? 'faible',
-        websiteRedesignYear: storedIndex.get(company.siren)?.websiteRedesignYear ?? null,
-        email: storedIndex.get(company.siren)?.email ?? null,
-        eligibility: estimateEligibility(company),
-        latestScanStatus: latestScanIndex.get(company.siren)?.status ?? null,
-        latestScannedAt: latestScanIndex.get(company.siren)?.scannedAt ?? null,
-      })),
+      results: enrichedResults,
     });
   } catch (error) {
     next(error);
@@ -106,14 +118,20 @@ router.get('/recent', async (req, res, next) => {
     const params = schema.parse(req.query);
     const companies = await listCompanies(params.limit ?? 50);
     const latestScanIndex = await getLatestScanIndex();
-    res.json({
-      success: true,
-      companies: companies.map((company) => ({
+
+    const enrichedCompanies = await Promise.all(
+      companies.map(async (company) => ({
         ...company,
         eligibility: estimateEligibility(company),
         latestScanStatus: latestScanIndex.get(company.siren)?.status ?? null,
         latestScannedAt: latestScanIndex.get(company.siren)?.scannedAt ?? null,
+        rgaaProspectScore: await scoreRgaaProspect(company.websiteUrl),
       })),
+    );
+
+    res.json({
+      success: true,
+      companies: enrichedCompanies,
     });
   } catch (error) {
     next(error);
@@ -148,6 +166,7 @@ router.get('/:siren', async (req, res, next) => {
         eligibility: estimateEligibility(company),
         latestScanStatus: latestScanIndex.get(company.siren)?.status ?? null,
         latestScannedAt: latestScanIndex.get(company.siren)?.scannedAt ?? null,
+        rgaaProspectScore: await scoreRgaaProspect(stored?.websiteUrl ?? null),
       },
     });
   } catch (error) {
@@ -209,6 +228,7 @@ router.post('/resolve-website', async (req, res, next) => {
         eligibility: estimateEligibility(company),
         latestScanStatus: latestScanIndex.get(company.siren)?.status ?? null,
         latestScannedAt: latestScanIndex.get(company.siren)?.scannedAt ?? null,
+        rgaaProspectScore: await scoreRgaaProspect(resolution.websiteUrl),
       },
       resolution: {
         ...resolution,

@@ -52,6 +52,19 @@ export type AxeScanSummary = {
   nonExpertSummary: string;
 };
 
+export type RgaaProspectLevel =
+  | 'fort_probable'
+  | 'probable'
+  | 'faible'
+  | 'a_verifier';
+
+export type RgaaProspectScore = {
+  level: RgaaProspectLevel;
+  score: number;
+  signals: string[];
+  scannedUrl: string | null;
+};
+
 export type Company = {
   siren: string;
   nom: string;
@@ -73,6 +86,7 @@ export type Company = {
   latestScanStatus?: ScanStatus | null;
   latestScannedAt?: string | null;
   lastExportedAt?: string | null;
+  rgaaProspectScore?: RgaaProspectScore | null;
 };
 
 export type WebsiteResolution = {

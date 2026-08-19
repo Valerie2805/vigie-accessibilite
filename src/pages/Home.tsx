@@ -16,7 +16,7 @@ import {
   getEligibilityLabel,
   getScanStatusLabel,
 } from '@/utils/format';
-import type { Company, EligibilityStatus, ScanStatus } from '@/types';
+import type { Company, EligibilityStatus, RgaaProspectLevel, ScanStatus } from '@/types';
 
 type EligibilityFilter = 'tous' | EligibilityStatus;
 type AccessibilityFilter = 'tous' | 'sans_analyse' | ScanStatus;
@@ -209,6 +209,32 @@ const activityOptions = [
   { value: 'autre', label: 'Autre activite' },
 ] as const;
 
+function getRgaaProspectLabel(level: RgaaProspectLevel | undefined) {
+  switch (level) {
+    case 'fort_probable':
+      return 'Fort probable';
+    case 'probable':
+      return 'Probable';
+    case 'faible':
+      return 'Faible';
+    default:
+      return 'A verifier';
+  }
+}
+
+function getRgaaProspectClasses(level: RgaaProspectLevel | undefined) {
+  switch (level) {
+    case 'fort_probable':
+      return 'border-emerald-400/40 bg-emerald-400/10 text-emerald-200';
+    case 'probable':
+      return 'border-copper/40 bg-copper/10 text-copper-soft';
+    case 'faible':
+      return 'border-white/20 bg-white/5 text-ivory-muted';
+    default:
+      return 'border-white/10 bg-white/5 text-ivory-muted';
+  }
+}
+
 export default function Home() {
   const [query, setQuery] = useState('');
   const [selectedClientSearch, setSelectedClientSearch] = useState('');
@@ -284,6 +310,7 @@ export default function Home() {
             websiteConfidence: response.company.websiteConfidence,
             websiteRedesignYear: response.company.websiteRedesignYear,
             email: response.company.email,
+            rgaaProspectScore: response.company.rgaaProspectScore ?? company.rgaaProspectScore ?? null,
             latestScanStatus:
               response.company.latestScanStatus ?? company.latestScanStatus ?? null,
             latestScannedAt:
@@ -558,7 +585,7 @@ export default function Home() {
                   value={department}
                   onChange={(event) => setDepartment(event.target.value)}
                   className="h-14 w-full rounded-2xl border border-white/10 bg-ink-soft px-4 text-sm text-ivory outline-none transition focus:border-copper/50"
-                  placeholder="75, 69, 13, 974..."
+                  placeholder="75, 92, 93 ou 974"
                 />
               </label>
             ) : (
@@ -688,16 +715,10 @@ export default function Home() {
           <div className="mt-5 flex flex-wrap items-center gap-3">
             <button
               type="submit"
-              disabled={
-                loading || !hasSearchCriteria
-              }
+              disabled={loading || !hasSearchCriteria}
               className="inline-flex h-12 items-center gap-2 rounded-full bg-copper px-5 text-sm font-semibold text-ink transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {loading ? (
-                <Spinner />
-              ) : (
-                <Radar className="h-4 w-4" />
-              )}
+              {loading ? <Spinner /> : <Radar className="h-4 w-4" />}
               Lancer la recherche
             </button>
             <p className="text-sm text-ivory-muted">
@@ -783,16 +804,10 @@ export default function Home() {
                 <option value="elements_partiels" className="bg-ink text-ivory">
                   {getScanStatusLabel('elements_partiels')}
                 </option>
-                <option
-                  value="conformite_non_demontree"
-                  className="bg-ink text-ivory"
-                >
+                <option value="conformite_non_demontree" className="bg-ink text-ivory">
                   {getScanStatusLabel('conformite_non_demontree')}
                 </option>
-                <option
-                  value="a_verifier_manuellement"
-                  className="bg-ink text-ivory"
-                >
+                <option value="a_verifier_manuellement" className="bg-ink text-ivory">
                   {getScanStatusLabel('a_verifier_manuellement')}
                 </option>
                 <option value="sans_analyse" className="bg-ink text-ivory">
@@ -830,8 +845,8 @@ export default function Home() {
               disabled={
                 enriching ||
                 results.length === 0 ||
-                results.every((company) => company.websiteUrl && company.email)
-                || exporting
+                results.every((company) => company.websiteUrl && company.email) ||
+                exporting
               }
               className="inline-flex h-10 items-center gap-2 rounded-full border border-moss/40 bg-moss/10 px-4 text-sm text-moss transition hover:border-moss hover:bg-moss hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
             >
@@ -856,6 +871,7 @@ export default function Home() {
                 />
                 Selectionner pour export
               </label>
+
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div className="space-y-3">
                   <div className="flex flex-wrap items-center gap-3">
@@ -864,16 +880,39 @@ export default function Home() {
                     {company.latestScanStatus ? (
                       <StatusBadge status={company.latestScanStatus} type="scan" />
                     ) : null}
+                    <span
+                      className={`inline-flex items-center rounded-full border px-3 py-1 text-xs uppercase tracking-[0.18em] ${getRgaaProspectClasses(
+                        company.rgaaProspectScore?.level,
+                      )}`}
+                    >
+                      Score RGAA {getRgaaProspectLabel(company.rgaaProspectScore?.level)}
+                    </span>
                   </div>
+
                   <p className="text-sm text-ivory-muted">
                     {company.adresse ?? 'Adresse non disponible'}
                   </p>
+
                   <div className="flex flex-wrap gap-3 text-xs uppercase tracking-[0.18em] text-ivory-muted">
                     <span>SIREN {company.siren}</span>
                     <span>{company.activite ?? 'NAF inconnu'}</span>
                     <span>{company.categorieEntreprise ?? 'Categorie inconnue'}</span>
                     <span>{getEffectifLabel(company.trancheEffectif)}</span>
                   </div>
+
+                  {company.rgaaProspectScore?.signals?.length ? (
+                    <div className="flex flex-wrap gap-2">
+                      {company.rgaaProspectScore.signals.slice(0, 4).map((signal) => (
+                        <span
+                          key={signal}
+                          className="rounded-full border border-copper/30 bg-copper/10 px-3 py-1 text-xs text-copper-soft"
+                        >
+                          {signal}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+
                   <div className="flex flex-wrap items-center gap-3 text-sm text-ivory-muted">
                     <span className="inline-flex items-center gap-2">
                       <Globe className="h-4 w-4 text-copper-soft" />
