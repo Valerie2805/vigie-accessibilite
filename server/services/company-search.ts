@@ -3,7 +3,6 @@ import type { CompanySearchResult } from '../types.js';
 const SEARCH_API_URL = 'https://recherche-entreprises.api.gouv.fr/search';
 const SEARCH_RESULTS_PER_PAGE = 20;
 const SEARCH_MAX_PAGES = 10;
-
 const employeeRangeByTranche: Record<string, { min: number; max: number | null }> = {
   '00': { min: 0, max: 0 },
   '01': { min: 1, max: 2 },
@@ -74,6 +73,17 @@ function normalizeText(value: string) {
     .toLowerCase();
 }
 
+function matchesCity(company: CompanySearchResult, city?: string) {
+  if (!city?.trim()) {
+    return true;
+  }
+
+  const normalizedCity = normalizeText(city);
+  const candidateValues = [company.ville, company.adresse].filter(Boolean) as string[];
+
+  return candidateValues.some((value) => normalizeText(value).includes(normalizedCity));
+}
+
 function normalizeNafCode(value: string) {
   return value.replace(/\s+/g, '').toUpperCase();
 }
@@ -95,17 +105,6 @@ function parseNafCodes(value?: string) {
 
 function parseDepartments(value?: string) {
   return splitMultiValue(value).map((item) => normalizeText(item));
-}
-
-function matchesCity(company: CompanySearchResult, city?: string) {
-  if (!city?.trim()) {
-    return true;
-  }
-
-  const normalizedCity = normalizeText(city);
-  const candidateValues = [company.ville, company.adresse].filter(Boolean) as string[];
-
-  return candidateValues.some((candidate) => normalizeText(candidate).includes(normalizedCity));
 }
 
 function matchesNafCode(company: CompanySearchResult, nafCode?: string) {
@@ -161,9 +160,7 @@ function matchesMetier(company: CompanySearchResult, metier?: string) {
   const normalizedMetier = normalizeText(metier);
   const candidateValues = [company.nom, company.adresse, company.activite].filter(Boolean) as string[];
 
-  return candidateValues.some((candidate) =>
-    normalizeText(candidate).includes(normalizedMetier),
-  );
+  return candidateValues.some((value) => normalizeText(value).includes(normalizedMetier));
 }
 
 function matchesRevenue(
@@ -298,18 +295,12 @@ async function fetchSearchPage(params: {
   return (await response.json()) as SearchApiResponse;
 }
 
-function buildSearchCombos(params: {
-  query?: string;
-  city?: string;
-  department?: string;
-  nafCode?: string;
-}) {
+function buildSearchCombos(params: { department?: string; nafCode?: string }) {
   const departments = parseDepartments(params.department);
   const nafCodes = parseNafCodes(params.nafCode);
 
   const departmentValues = departments.length > 0 ? departments : [''];
   const nafValues = nafCodes.length > 0 ? nafCodes : [''];
-
   const combos: Array<{ department?: string; nafCode?: string }> = [];
 
   for (const department of departmentValues) {
@@ -339,19 +330,12 @@ export async function searchCompanies(
   const cleanedMetier = metier?.trim() ?? '';
   const cleanedDepartment = department?.trim() ?? '';
   const cleanedNafCode = nafCode?.trim() ?? '';
-  const cleanedCity = city?.trim() ?? '';
 
-  if (
-    !cleanedQuery &&
-    !cleanedMetier &&
-    !cleanedDepartment &&
-    !cleanedNafCode &&
-    !cleanedCity
-  ) {
+  if (!cleanedQuery && !cleanedMetier && !cleanedDepartment && !cleanedNafCode && !city?.trim()) {
     return [];
   }
 
-  const combinedQuery = [cleanedQuery, cleanedMetier, cleanedCity]
+  const combinedQuery = [cleanedQuery, cleanedMetier, city?.trim() ?? '']
     .filter(Boolean)
     .join(' ')
     .trim();
@@ -360,8 +344,6 @@ export async function searchCompanies(
     const collectedResults: CompanySearchResult[] = [];
     const seenSirens = new Set<string>();
     const combos = buildSearchCombos({
-      query: combinedQuery,
-      city: cleanedCity,
       department: cleanedDepartment,
       nafCode: cleanedNafCode,
     });
@@ -370,7 +352,7 @@ export async function searchCompanies(
       for (let page = 1; page <= SEARCH_MAX_PAGES; page += 1) {
         const payload = await fetchSearchPage({
           query: combinedQuery || undefined,
-          city: cleanedCity || undefined,
+          city: city?.trim() || undefined,
           department: combo.department,
           nafCode: combo.nafCode,
           page,

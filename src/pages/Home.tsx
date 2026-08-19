@@ -29,6 +29,8 @@ type ClientSearchPreset = {
   nafCodes?: string[];
 };
 
+const RGAA_KEYWORDS_DOWNLOAD_URL = '/mots-cles-prospects-rgaa.csv';
+
 const clientSearchPresets: ClientSearchPreset[] = [
   {
     value: 'agence-web',
@@ -108,6 +110,54 @@ const clientSearchPresets: ClientSearchPreset[] = [
     group: 'BTP / ingenierie',
     nafCodes: ['71.12B'],
   },
+  {
+    value: 'accessibilite-numerique',
+    label: 'Accessibilite numerique',
+    group: 'Prospects accessibilite',
+    query: 'accessibilite numerique',
+  },
+  {
+    value: 'rgaa',
+    label: 'RGAA',
+    group: 'Prospects accessibilite',
+    query: 'RGAA',
+  },
+  {
+    value: 'audit-rgaa',
+    label: 'Audit RGAA',
+    group: 'Prospects accessibilite',
+    query: 'audit RGAA',
+  },
+  {
+    value: 'mise-en-conformite-rgaa',
+    label: 'Mise en conformite RGAA',
+    group: 'Prospects accessibilite',
+    query: 'mise en conformite RGAA',
+  },
+  {
+    value: 'formation-rgaa',
+    label: 'Formation RGAA',
+    group: 'Prospects accessibilite',
+    query: 'formation RGAA',
+  },
+  {
+    value: 'wcag',
+    label: 'WCAG',
+    group: 'Prospects accessibilite',
+    query: 'WCAG accessibilite',
+  },
+  {
+    value: 'design-inclusif',
+    label: 'Design inclusif',
+    group: 'Prospects accessibilite',
+    query: 'design inclusif accessibilite',
+  },
+  {
+    value: 'referent-accessibilite',
+    label: 'Referent accessibilite',
+    group: 'Prospects accessibilite',
+    query: 'referent accessibilite numerique',
+  },
 ];
 
 const clientSearchOptions = [
@@ -128,6 +178,12 @@ const clientSearchOptions = [
   {
     label: 'BTP / ingenierie',
     options: clientSearchPresets.filter((option) => option.group === 'BTP / ingenierie'),
+  },
+  {
+    label: 'Prospects accessibilite',
+    options: clientSearchPresets.filter(
+      (option) => option.group === 'Prospects accessibilite',
+    ),
   },
 ];
 
@@ -180,7 +236,6 @@ export default function Home() {
   const selectedClientPreset = clientSearchPresets.find(
     (option) => option.value === selectedClientSearch,
   );
-
   const hasSearchCriteria =
     query.trim().length >= 2 ||
     metier.trim().length >= 2 ||
@@ -216,7 +271,6 @@ export default function Home() {
 
     setEnriching(true);
     setError(null);
-
     let failureCount = 0;
 
     try {
@@ -237,7 +291,9 @@ export default function Home() {
           };
 
           setResults((current) =>
-            current.map((item) => (item.siren === company.siren ? updatedCompany : item)),
+            current.map((item) =>
+              item.siren === company.siren ? updatedCompany : item,
+            ),
           );
           saveRecentCompaniesToBrowser([updatedCompany]);
         } catch {
@@ -427,6 +483,13 @@ export default function Home() {
                   </optgroup>
                 ))}
               </select>
+              <a
+                href={RGAA_KEYWORDS_DOWNLOAD_URL}
+                download
+                className="inline-flex pt-2 text-xs uppercase tracking-[0.16em] text-copper-soft transition hover:text-copper"
+              >
+                Telecharger la liste Excel compatible des mots-cles RGAA
+              </a>
             </label>
 
             <div className="space-y-2">
@@ -495,7 +558,7 @@ export default function Home() {
                   value={department}
                   onChange={(event) => setDepartment(event.target.value)}
                   className="h-14 w-full rounded-2xl border border-white/10 bg-ink-soft px-4 text-sm text-ivory outline-none transition focus:border-copper/50"
-                  placeholder="75, 92, 93 ou 974"
+                  placeholder="75, 69, 13, 974..."
                 />
               </label>
             ) : (
@@ -625,10 +688,16 @@ export default function Home() {
           <div className="mt-5 flex flex-wrap items-center gap-3">
             <button
               type="submit"
-              disabled={loading || !hasSearchCriteria}
+              disabled={
+                loading || !hasSearchCriteria
+              }
               className="inline-flex h-12 items-center gap-2 rounded-full bg-copper px-5 text-sm font-semibold text-ink transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {loading ? <Spinner /> : <Radar className="h-4 w-4" />}
+              {loading ? (
+                <Spinner />
+              ) : (
+                <Radar className="h-4 w-4" />
+              )}
               Lancer la recherche
             </button>
             <p className="text-sm text-ivory-muted">
@@ -714,10 +783,16 @@ export default function Home() {
                 <option value="elements_partiels" className="bg-ink text-ivory">
                   {getScanStatusLabel('elements_partiels')}
                 </option>
-                <option value="conformite_non_demontree" className="bg-ink text-ivory">
+                <option
+                  value="conformite_non_demontree"
+                  className="bg-ink text-ivory"
+                >
                   {getScanStatusLabel('conformite_non_demontree')}
                 </option>
-                <option value="a_verifier_manuellement" className="bg-ink text-ivory">
+                <option
+                  value="a_verifier_manuellement"
+                  className="bg-ink text-ivory"
+                >
                   {getScanStatusLabel('a_verifier_manuellement')}
                 </option>
                 <option value="sans_analyse" className="bg-ink text-ivory">
@@ -755,8 +830,8 @@ export default function Home() {
               disabled={
                 enriching ||
                 results.length === 0 ||
-                results.every((company) => company.websiteUrl && company.email) ||
-                exporting
+                results.every((company) => company.websiteUrl && company.email)
+                || exporting
               }
               className="inline-flex h-10 items-center gap-2 rounded-full border border-moss/40 bg-moss/10 px-4 text-sm text-moss transition hover:border-moss hover:bg-moss hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
             >
