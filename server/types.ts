@@ -16,6 +16,19 @@ export type EligibilityStatus =
   | 'hors_perimetre_probable'
   | 'incertain';
 
+export type RgaaProspectLevel =
+  | 'fort_probable'
+  | 'probable'
+  | 'faible'
+  | 'a_verifier';
+
+export type RgaaProspectScore = {
+  level: RgaaProspectLevel;
+  score: number;
+  signals: string[];
+  scannedUrl: string | null;
+};
+
 export type WebsiteResolution = {
   websiteUrl: string | null;
   source: 'google_places' | 'recherche_web' | 'manuel' | 'inconnue';
